@@ -2,21 +2,31 @@
 
 #include <JuceHeader.h>
 
-// Construção de juce::String a partir de literal UTF-8.
+// Camada de textos (i18n) do projeto.
 //
-// Contexto: os fontes são compilados com /utf-8 (literais em UTF-8), mas o
-// construtor juce::String(const char*) do JUCE 9 interpreta a entrada como
-// 8-bit ASCII (CharPointer_ASCII): bytes acima de 127 são convertidos 1:1 para
-// U+0000-U+00FF, causando mojibake em texto pt-BR (ex.: "Afinação" -> "AfinaÃ§Ã£o").
-// Usar Text::from() direciona toda literal para juce::String::fromUTF8 (UTF-8).
+// Padrão: toda string de interface/usuário é criada via Text::t("chave"), onde a
+// chave é o próprio literal padrão (pt-BR). A tabela de traduções (PT/EN/ES)
+// é centralizada em Source/Text.cpp; quando a chave não está na tabela, retorna a
+// própria chave decodificada como UTF-8.
 //
-// Padrão do projeto: TODA string de interface/usuário é criada via Text::from(),
-// inclusive as que hoje são somente ASCII — textos futuros podem ganhar acentos
-// sem quebrar silenciosamente.
+// UTF-8 é o fundamento: os fontes são compilados com /utf-8 e Text::t() decodifica
+// a literal via juce::String::fromUTF8 — nunca pelo construtor String(const char*)
+// do JUCE 9 (que interpreta como 8-bit ASCII e quebraria o texto pt-BR).
 namespace Text
 {
-    inline juce::String from (const char* utf8)
+    enum class Culture
     {
-        return juce::String::fromUTF8 (utf8);
-    }
+        PortugueseBR,
+        English,
+        Spanish
+    };
+
+    void setCulture (Culture culture);
+    Culture getCulture() noexcept;
+    juce::String cultureCode() noexcept;
+    juce::String cultureName() noexcept;
+
+    // Traduz a chave para a cultura ativa; sem entrada na tabela, retorna a chave.
+    juce::String t (const char* utf8);
+    juce::String t (const juce::String& key);
 }

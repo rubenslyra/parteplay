@@ -34,6 +34,7 @@ target_sources(PartePlay PRIVATE
     Source/Instrument.cpp
     Source/MidiMapExporter.cpp
     Source/PitchShifter.cpp
+    Source/Text.cpp
     Source/TempoAnalyser.cpp
 )
 

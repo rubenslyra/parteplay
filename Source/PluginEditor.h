@@ -49,6 +49,9 @@ private:
     juce::Label analysisLabel;
     juce::Label statusLabel;
 
+    juce::Label cultureLabel;
+    juce::ComboBox cultureSelector;
+
     juce::String exportMessage;
 
     std::unique_ptr<juce::FileChooser> fileChooser;

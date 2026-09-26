@@ -7,13 +7,13 @@
 PlayScoreEditor::PlayScoreEditor (PlayScoreProcessor& p)
     : AudioProcessorEditor (&p), processor (p)
 {
-    setSize (480, 452);
+    setSize (480, 484);
 
-    loadButton.setButtonText (Text::from ("Carregar Áudio"));
+    loadButton.setButtonText (Text::t ("Carregar Áudio"));
     loadButton.onClick = [this]
     {
         fileChooser = std::make_unique<juce::FileChooser> (
-            Text::from ("Selecionar o áudio de referência"),
+            Text::t ("Selecionar o áudio de referência"),
             juce::File::getSpecialLocation (juce::File::userHomeDirectory),
             "*.wav;*.flac;*.ogg;*.mp3");
 
@@ -29,10 +29,10 @@ PlayScoreEditor::PlayScoreEditor (PlayScoreProcessor& p)
     };
     addAndMakeVisible (loadButton);
 
-    fileLabel.setText (Text::from ("Nenhum áudio carregado"), juce::dontSendNotification);
+    fileLabel.setText (Text::t ("Nenhum áudio carregado"), juce::dontSendNotification);
     addAndMakeVisible (fileLabel);
 
-    instrumentLabel.setText (Text::from ("Instrumento:"), juce::dontSendNotification);
+    instrumentLabel.setText (Text::t ("Instrumento:"), juce::dontSendNotification);
     addAndMakeVisible (instrumentLabel);
 
     instrumentSelector.addItemList (InstrumentTable::getDisplayNames(), 1);
@@ -42,7 +42,7 @@ PlayScoreEditor::PlayScoreEditor (PlayScoreProcessor& p)
     instrumentAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
         processor.parameters, Parameter::instrument, instrumentSelector);
 
-    pitchLabel.setText (Text::from ("Afinação (Hz):"), juce::dontSendNotification);
+    pitchLabel.setText (Text::t ("Afinação (Hz):"), juce::dontSendNotification);
     addAndMakeVisible (pitchLabel);
 
     pitchSlider.setRange (Tuning::minReferenceHz, Tuning::maxReferenceHz, 0.1);
@@ -52,7 +52,7 @@ PlayScoreEditor::PlayScoreEditor (PlayScoreProcessor& p)
     pitchAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         processor.parameters, Parameter::referencePitch, pitchSlider);
 
-    transposeLabel.setText (Text::from ("Transposição (semitons):"), juce::dontSendNotification);
+    transposeLabel.setText (Text::t ("Transposição (semitons):"), juce::dontSendNotification);
     addAndMakeVisible (transposeLabel);
 
     transposeSlider.setRange (-12.0, 12.0, 1.0);
@@ -62,18 +62,18 @@ PlayScoreEditor::PlayScoreEditor (PlayScoreProcessor& p)
     transposeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         processor.parameters, Parameter::transpose, transposeSlider);
 
-    speedLabel.setText (Text::from ("Velocidade (treino %):"), juce::dontSendNotification);
+    speedLabel.setText (Text::t ("Velocidade (treino %):"), juce::dontSendNotification);
     addAndMakeVisible (speedLabel);
 
     speedSlider.setRange (50.0, 150.0, 1.0);
     speedSlider.setValue (100.0);
-    speedSlider.setTextValueSuffix (Text::from (" %"));
+    speedSlider.setTextValueSuffix (Text::t (" %"));
     addAndMakeVisible (speedSlider);
 
     speedAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         processor.parameters, Parameter::trainingSpeed, speedSlider);
 
-    loopStartLabel.setText (Text::from ("Loop início (compasso):"), juce::dontSendNotification);
+    loopStartLabel.setText (Text::t ("Loop início (compasso):"), juce::dontSendNotification);
     addAndMakeVisible (loopStartLabel);
 
     loopStartSlider.setRange (1.0, 8.0, 1.0);
@@ -84,7 +84,7 @@ PlayScoreEditor::PlayScoreEditor (PlayScoreProcessor& p)
     loopStartAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         processor.parameters, Parameter::loopStart, loopStartSlider);
 
-    loopEndLabel.setText (Text::from ("Loop fim (compasso):"), juce::dontSendNotification);
+    loopEndLabel.setText (Text::t ("Loop fim (compasso):"), juce::dontSendNotification);
     addAndMakeVisible (loopEndLabel);
 
     loopEndSlider.setRange (1.0, 8.0, 1.0);
@@ -95,22 +95,38 @@ PlayScoreEditor::PlayScoreEditor (PlayScoreProcessor& p)
     loopEndAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         processor.parameters, Parameter::loopEnd, loopEndSlider);
 
-    loopToggle.setButtonText (Text::from ("Repetir trecho"));
+    loopToggle.setButtonText (Text::t ("Repetir trecho"));
     addAndMakeVisible (loopToggle);
 
     loopToggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         processor.parameters, Parameter::loopEnabled, loopToggle);
 
-    exportButton.setButtonText (Text::from ("Exportar Mapa (.mid)"));
+    exportButton.setButtonText (Text::t ("Exportar Mapa (.mid)"));
     exportButton.setEnabled (false);
     exportButton.onClick = [this] { exportTempoMap(); };
     addAndMakeVisible (exportButton);
 
-    analysisLabel.setText (Text::from ("BPM: -- | Assinatura: -- | Afinação: --Hz | Compassos: -- | Duração: --:--"), juce::dontSendNotification);
+    analysisLabel.setText (Text::t ("BPM: -- | Assinatura: -- | Afinação: --Hz | Compassos: -- | Duração: --:--"), juce::dontSendNotification);
     addAndMakeVisible (analysisLabel);
 
     statusLabel.setText ("", juce::dontSendNotification);
     addAndMakeVisible (statusLabel);
+
+    cultureLabel.setText (Text::t ("Idioma:"), juce::dontSendNotification);
+    addAndMakeVisible (cultureLabel);
+
+    cultureSelector.addItem ("Português", 1);
+    cultureSelector.addItem ("English", 2);
+    cultureSelector.addItem ("Español", 3);
+    cultureSelector.setSelectedId (1 + static_cast<int> (Text::getCulture()));
+    cultureSelector.onChange = [this]
+    {
+        Text::setCulture (static_cast<Text::Culture> (cultureSelector.getSelectedId() - 1));
+        updateFileLabel();
+        updateAnalysisLabel();
+        updateStatusLabel();
+    };
+    addAndMakeVisible (cultureSelector);
 
     updateFileLabel();
     updateAnalysisLabel();
@@ -130,7 +146,7 @@ void PlayScoreEditor::timerCallback()
 void PlayScoreEditor::updateFileLabel()
 {
     const auto name = processor.getLoadedFileName();
-    fileLabel.setText (name.isEmpty() ? Text::from ("Nenhum áudio carregado") : name, juce::dontSendNotification);
+    fileLabel.setText (name.isEmpty() ? Text::t ("Nenhum áudio carregado") : name, juce::dontSendNotification);
 
     if (! name.isEmpty())
         exportMessage.clear();
@@ -148,14 +164,14 @@ void PlayScoreEditor::updateAnalysisLabel()
 
     if (bpm <= 0.0 || duration <= 0.0)
     {
-        text = Text::from ("BPM: -- | Assinatura: -- | Afinação: --Hz | Compassos: -- | Duração: --:--");
+        text = Text::t ("BPM: -- | Assinatura: -- | Afinação: --Hz | Compassos: -- | Duração: --:--");
     }
     else
     {
         const int minutes = (int) (duration / 60.0);
         const int seconds = (int) duration - minutes * 60;
 
-        text = juce::String::formatted (Text::from ("BPM: %s | Assinatura: %d/4 | Afinação: %.1fHz | Compassos: %d | Duração: %02d:%02d"),
+        text = juce::String::formatted (Text::t ("BPM: %s | Assinatura: %d/4 | Afinação: %.1fHz | Compassos: %d | Duração: %02d:%02d"),
                                         juce::String (bpm, 1), meter, tuning, measures, minutes, seconds);
     }
 
@@ -183,18 +199,18 @@ void PlayScoreEditor::updateStatusLabel()
 
     if (speed != 1.0 || loopActive)
     {
-        juce::String state = Text::from ("Treino |");
+        juce::String state = Text::t ("Treino |");
 
         if (speed != 1.0)
-            state += Text::from (" ") + juce::String (speed * 100.0, 0) + Text::from ("%");
+            state += Text::t (" ") + juce::String (speed * 100.0, 0) + Text::t ("%");
 
         if (loopActive)
-            state += Text::from (" | Loop ") + juce::String (processor.getLoopStartMeasure())
-                   + Text::from ("-") + juce::String (processor.getLoopEndMeasure());
+            state += Text::t (" | Loop ") + juce::String (processor.getLoopStartMeasure())
+                   + Text::t ("-") + juce::String (processor.getLoopEndMeasure());
 
         if (! processor.isTransportPlaying())
         {
-            text = state + Text::from (" | Pausado");
+            text = state + Text::t (" | Pausado");
         }
         else
         {
@@ -202,18 +218,18 @@ void PlayScoreEditor::updateStatusLabel()
             const auto rate = processor.getTransportSampleRate();
             const double seconds = rate > 0.0 ? static_cast<double> (sample) / rate : 0.0;
 
-            text = juce::String::formatted (Text::from ("%s | %02d:%05.2f"),
+            text = juce::String::formatted (Text::t ("%s | %02d:%05.2f"),
                                             state, static_cast<int> (seconds) / 60,
                                             seconds - static_cast<int> (seconds / 60.0) * 60.0);
         }
     }
     else if (! processor.isTransportPlaying())
     {
-        text = Text::from ("Pausado");
+        text = Text::t ("Pausado");
     }
     else if (processor.hasReachedEndOfFile())
     {
-        text = Text::from ("Fim do arquivo");
+        text = Text::t ("Fim do arquivo");
     }
     else
     {
@@ -221,7 +237,7 @@ void PlayScoreEditor::updateStatusLabel()
         const auto rate = processor.getTransportSampleRate();
         const double seconds = rate > 0.0 ? static_cast<double> (sample) / rate : 0.0;
 
-        text = juce::String::formatted (Text::from ("Tocando | %02d:%05.2f | Transposição %+d st"),
+        text = juce::String::formatted (Text::t ("Tocando | %02d:%05.2f | Transposição %+d st"),
                                         static_cast<int> (seconds) / 60,
                                         seconds - static_cast<int> (seconds / 60.0) * 60.0,
                                         processor.getActiveSemitones());
@@ -248,16 +264,16 @@ void PlayScoreEditor::paint (juce::Graphics& g)
 
     g.setColour (juce::Colours::white);
     g.setFont (juce::Font (18.0f).boldened());
-    g.drawText (Text::from ("PartePlay"), 52, 10, getWidth() - 60, 24, juce::Justification::centredLeft);
+    g.drawText (Text::t ("PartePlay"), 52, 10, getWidth() - 60, 24, juce::Justification::centredLeft);
 
     g.setColour (juce::Colour (0xff9a9aa4));
     g.setFont (juce::Font (12.0f));
-    g.drawText (Text::from ("Reprodução de referência sincronizada ao transport"),
+    g.drawText (Text::t ("Reprodução de referência sincronizada ao transport"),
                 52, 34, getWidth() - 64, 18, juce::Justification::centredLeft);
 
     g.setColour (juce::Colour (0xff8a8a94));
     g.setFont (juce::Font (11.0f));
-    g.drawText (Text::from ("Rubinho Lyra Software Eng"),
+    g.drawText (Text::t ("Rubinho Lyra Software Eng"),
                 0, getHeight() - 22, getWidth(), 16, juce::Justification::centred);
 }
 
@@ -289,6 +305,9 @@ void PlayScoreEditor::resized()
     analysisLabel.setBounds (margin, 300, getWidth() - margin * 2, 22);
     statusLabel.setBounds (margin, 332, getWidth() - margin * 2, 22);
     exportButton.setBounds (margin, 364, 220, 26);
+
+    cultureLabel.setBounds (margin, 400, 120, 20);
+    cultureSelector.setBounds (margin + 130, 400, 140, 22);
 }
 
 void PlayScoreEditor::exportTempoMap()
@@ -299,15 +318,15 @@ void PlayScoreEditor::exportTempoMap()
     const auto suggested = juce::File::getSpecialLocation (juce::File::userHomeDirectory)
                                .getChildFile (juce::File::createLegalFileName (qualified + " - mapa de tempo.mid"));
 
-    exportChooser = std::make_unique<juce::FileChooser> (Text::from ("Exportar mapa de tempo (MIDI)"), suggested, "*.mid");
+    exportChooser = std::make_unique<juce::FileChooser> (Text::t ("Exportar mapa de tempo (MIDI)"), suggested, "*.mid");
 
     exportChooser->launchAsync (juce::FileBrowserComponent::saveMode,
         [this] (const juce::FileChooser& chooser)
         {
             const auto result = chooser.getResult();
             exportMessage = (result != juce::File() && processor.exportTempoMap (result))
-                ? Text::from ("Mapa de tempo exportado: ") + result.getFileName()
-                : Text::from ("Falha ao exportar o mapa de tempo.");
+                ? Text::t ("Mapa de tempo exportado: ") + result.getFileName()
+                : Text::t ("Falha ao exportar o mapa de tempo.");
 
             updateStatusLabel();
         });

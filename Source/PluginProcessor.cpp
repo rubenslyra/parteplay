@@ -35,26 +35,26 @@ juce::AudioProcessorValueTreeState::ParameterLayout PlayScoreProcessor::createPa
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
-    layout.add (std::make_unique<juce::AudioParameterChoice> (Parameter::instrument, Text::from ("Instrumento"),
+    layout.add (std::make_unique<juce::AudioParameterChoice> (Parameter::instrument, Text::t ("Instrumento"),
                                                               InstrumentTable::getDisplayNames(), 0));
 
-    layout.add (std::make_unique<juce::AudioParameterFloat> (Parameter::referencePitch, Text::from ("Afinação (Hz)"),
+    layout.add (std::make_unique<juce::AudioParameterFloat> (Parameter::referencePitch, Text::t ("Afinação (Hz)"),
                   juce::NormalisableRange<float> ((float) Tuning::minReferenceHz,
                                                   (float) Tuning::maxReferenceHz, 0.1f),
                   (float) Tuning::defaultReferenceHz));
 
-    layout.add (std::make_unique<juce::AudioParameterInt> (Parameter::transpose, Text::from ("Transposição (semitons)"),
+    layout.add (std::make_unique<juce::AudioParameterInt> (Parameter::transpose, Text::t ("Transposição (semitons)"),
                   -12, 12, 0));
 
-    layout.add (std::make_unique<juce::AudioParameterFloat> (Parameter::trainingSpeed, Text::from ("Velocidade (treino)"),
+    layout.add (std::make_unique<juce::AudioParameterFloat> (Parameter::trainingSpeed, Text::t ("Velocidade (treino)"),
                   juce::NormalisableRange<float> (0.5f, 1.5f, 0.01f), 1.0f));
 
-    layout.add (std::make_unique<juce::AudioParameterBool> (Parameter::loopEnabled, Text::from ("Loop"),
+    layout.add (std::make_unique<juce::AudioParameterBool> (Parameter::loopEnabled, Text::t ("Loop"),
                   false));
 
-    layout.add (std::make_unique<juce::AudioParameterInt> (Parameter::loopStart, Text::from ("Loop início (compasso)"),
+    layout.add (std::make_unique<juce::AudioParameterInt> (Parameter::loopStart, Text::t ("Loop início (compasso)"),
                   1, 10000, 1));
-    layout.add (std::make_unique<juce::AudioParameterInt> (Parameter::loopEnd, Text::from ("Loop fim (compasso)"),
+    layout.add (std::make_unique<juce::AudioParameterInt> (Parameter::loopEnd, Text::t ("Loop fim (compasso)"),
                   1, 10000, 1));
 
     return layout;

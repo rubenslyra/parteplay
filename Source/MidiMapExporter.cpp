@@ -1,4 +1,5 @@
 ﻿#include "MidiMapExporter.h"
+#include "Text.h"
 
 #include <cmath>
 
@@ -8,8 +9,6 @@ namespace
     constexpr int denominatorExponent = 2;            // 2^2 = 4 (denominador semínima)
     constexpr int clocksPerClick = 24;
     constexpr int thirtySecondsPerQuarter = 8;
-
-    const juce::String trackName = "PartePlay - Mapa de Tempo";
 
     void writeVarLen (juce::MemoryOutputStream& out, unsigned int value)
     {
@@ -34,11 +33,13 @@ namespace
 
     void writeMetaTrackName (juce::MemoryOutputStream& out)
     {
+        const juce::String name = Text::t ("PartePlay - Mapa de Tempo");
+
         writeDelta (out);
         out.writeByte (0xFF);
         out.writeByte (0x03);
-        out.writeByte (static_cast<unsigned char> (trackName.getNumBytesAsUTF8()));
-        out.write (trackName.toRawUTF8(), trackName.getNumBytesAsUTF8());
+        out.writeByte (static_cast<unsigned char> (name.getNumBytesAsUTF8()));
+        out.write (name.toRawUTF8(), name.getNumBytesAsUTF8());
     }
 
     void writeMetaTempo (juce::MemoryOutputStream& out, double bpm)

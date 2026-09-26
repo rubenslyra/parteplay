@@ -19,11 +19,11 @@ namespace InstrumentTable
     {
         static const juce::StringArray names
         {
-            Text::from ("Piano / Trombone (C)"),
-            Text::from ("Trompete / Sax Tenor (Bb)"),
-            Text::from ("Sax Alto (Eb)"),
-            Text::from ("Trompa (F)"),
-            Text::from ("Ajuste Manual")
+            Text::t ("Piano / Trombone (C)"),
+            Text::t ("Trompete / Sax Tenor (Bb)"),
+            Text::t ("Sax Alto (Eb)"),
+            Text::t ("Trompa (F)"),
+            Text::t ("Ajuste Manual")
         };
 
         return names;
