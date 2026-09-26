@@ -1,6 +1,8 @@
-#include "TempoAnalyser.h"
+﻿#include "TempoAnalyser.h"
 
 #include <cmath>
+#include <vector>
+#include <limits>
 
 namespace
 {
@@ -130,4 +132,92 @@ double TempoAnalyser::estimateBpm (double sampleRate, const juce::AudioBuffer<fl
     jassert (bestBpm >= 60.0 && bestBpm <= 180.0);
 
     return std::round (bestBpm * 2.0) * 0.5;
+}
+
+int TempoAnalyser::estimateBeatsPerBar (double sampleRate, const juce::AudioBuffer<float>& buffer, double bpm)
+{
+    if (sampleRate <= 0.0 || bpm <= 0.0)
+        return 4;
+
+    constexpr int hop = 1024;
+    const juce::Array<float> onset = buildOnsetEnvelope (buffer, hop);
+
+    if (onset.size() < 32)
+        return 4;
+
+    const double framesPerSecond = sampleRate / (double) hop;
+    const double framesPerBeat = framesPerSecond * 60.0 / bpm;
+
+    if (framesPerBeat < 2.0)
+        return 4;
+
+    // Clareza do downbeat para uma hipótese de compasso (N tempos por compasso):
+    // alinha grades de compasso em várias fases e mede o destaque do tempo forte
+    // (primeira batida) sobre as demais, normalizado pela energia média.
+    auto clarityFor = [&onset] (int beatsPerBar, double beatFrames) -> double
+    {
+        const double barFrames = beatFrames * beatsPerBar;
+        const int numBars = (int) std::floor (onset.size() / barFrames);
+
+        if (numBars < 4)
+            return -1.0;
+
+        const int phaseSteps = juce::jlimit (1, 64, (int) std::ceil (barFrames / 4.0));
+
+        double bestClarity = -1.0;
+
+        for (double phase = 0.0; phase < barFrames; phase += phaseSteps)
+        {
+            std::vector<double> strengths (static_cast<size_t> (beatsPerBar), 0.0);
+
+            for (int bar = 0; bar < numBars; ++bar)
+            {
+                const double base = phase + (double) bar * barFrames;
+
+                for (int k = 0; k < beatsPerBar; ++k)
+                {
+                    const int idx = (int) std::lround (base + (double) k * beatFrames);
+                    if (idx >= 0 && idx < onset.size())
+                        strengths[static_cast<size_t> (k)] += onset.getReference (idx);
+                }
+            }
+
+            double mean = 0.0;
+            double maxValue = 0.0;
+            double minValue = std::numeric_limits<double>::max();
+
+            for (double value : strengths)
+            {
+                mean += value;
+                maxValue = juce::jmax (maxValue, value);
+                minValue = juce::jmin (minValue, value);
+            }
+
+            mean /= (double) beatsPerBar;
+
+            if (mean <= 1e-9)
+                continue;
+
+            double otherMax = 0.0;
+            for (size_t k = 1; k < strengths.size(); ++k)
+                otherMax = juce::jmax (otherMax, strengths[k]);
+
+            const double downbeatEdge = (strengths.front() - otherMax) / mean;
+            const double spread       = (maxValue - minValue) / mean;
+            const double clarity      = downbeatEdge + 0.5 * spread;
+
+            bestClarity = juce::jmax (bestClarity, clarity);
+        }
+
+        return bestClarity;
+    };
+
+    const double clarity3 = clarityFor (3, framesPerBeat);
+    const double clarity4 = clarityFor (4, framesPerBeat);
+
+    // Padrão quaternário; adota o ternário somente com evidência clara.
+    if (clarity3 > 0.0 && clarity3 > clarity4 * 1.25 + 0.1)
+        return 3;
+
+    return 4;
 }
