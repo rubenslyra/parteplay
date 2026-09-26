@@ -42,6 +42,7 @@ void FilePlayer::clear()
     sourceFileName.clear();
     estimatedBpm = 0.0;
     beatsPerBar = 4;
+    detectedTuningHz = Tuning::defaultReferenceHz;
     durationSeconds = 0.0;
     measures = 0;
 }
@@ -50,6 +51,7 @@ void FilePlayer::runTempoAnalysis()
 {
     estimatedBpm = 0.0;
     beatsPerBar = 4;
+    detectedTuningHz = Tuning::defaultReferenceHz;
     measures = 0;
 
     if (audioBuffer == nullptr || fileSampleRate <= 0.0)
@@ -59,6 +61,9 @@ void FilePlayer::runTempoAnalysis()
 
     if (estimatedBpm > 0.0)
         beatsPerBar = TempoAnalyser::estimateBeatsPerBar (fileSampleRate, *audioBuffer, estimatedBpm);
+
+    const double tuningCents = TempoAnalyser::estimateTuningCents (fileSampleRate, *audioBuffer);
+    detectedTuningHz = Tuning::defaultReferenceHz * std::pow (2.0, tuningCents / 1200.0);
 
     if (estimatedBpm > 0.0 && durationSeconds > 0.0)
         measures = (int) std::llround (durationSeconds * estimatedBpm / 60.0 / (double) beatsPerBar);

@@ -45,6 +45,7 @@ public:
     juce::String getLoadedFileName() const noexcept;
     double getAudioBpm() const noexcept;
     int getBeatsPerBar() const noexcept;
+    double getDetectedTuningHz() const noexcept;
     double getDurationSeconds() const noexcept;
     int getMeasureCount() const noexcept;
 
@@ -55,7 +56,7 @@ private:
     int getCurrentSemitones() const;
     void resetPlaybackState();
     void timerCallback() override;
-    double computeCurrentPitchRatio() const;
+    double computeCurrentPitchRatio (double baseFilePitchHz) const;
 
     std::unique_ptr<FilePlayer> player;
     juce::CriticalSection audioLock;

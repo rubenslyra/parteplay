@@ -221,3 +221,125 @@ int TempoAnalyser::estimateBeatsPerBar (double sampleRate, const juce::AudioBuff
 
     return 4;
 }
+
+double TempoAnalyser::estimateTuningCents (double sampleRate, const juce::AudioBuffer<float>& buffer)
+{
+    constexpr int fftOrder  = 12;
+    constexpr int fftSize   = 1 << fftOrder;   // 4096
+    constexpr int hopSize   = fftSize / 2;     // 2048
+    constexpr int halfRange = 60;              // faixa +-60 cents
+    constexpr int histSize  = halfRange * 2 + 1;
+
+    if (sampleRate <= 0.0 || buffer.getNumChannels() < 1 || buffer.getNumSamples() < fftSize)
+        return 0.0;
+
+    float globalPeak = 0.0f;
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+        globalPeak = juce::jmax (globalPeak, buffer.getMagnitude (ch, 0, buffer.getNumSamples()));
+
+    if (globalPeak <= 1e-6f)
+        return 0.0;
+
+    juce::dsp::FFT fft (fftOrder);
+
+    std::vector<float> window (static_cast<size_t> (fftSize));
+    for (int i = 0; i < fftSize; ++i)
+        window[static_cast<size_t> (i)] =
+            0.5f - 0.5f * std::cos (juce::MathConstants<double>::twoPi * i / (fftSize - 1));
+
+    std::vector<float> spectrum (static_cast<size_t> (fftSize * 2), 0.0f);
+    std::vector<int> histogram (static_cast<size_t> (histSize), 0);
+
+    const double hzPerBin = sampleRate / fftSize;
+    const int minBin = juce::jmax (1, (int) std::lround (80.0 / hzPerBin));
+    const int maxBin = juce::jmin (fftSize / 2 - 1, (int) std::lround (2500.0 / hzPerBin));
+
+    const auto magnitudeAt = [&spectrum] (int bin)
+    {
+        return std::hypot (spectrum[static_cast<size_t> (bin * 2)],
+                           spectrum[static_cast<size_t> (bin * 2 + 1)]);
+    };
+
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+    {
+        const float* data = buffer.getReadPointer (ch);
+        const int numSamples = buffer.getNumSamples();
+
+        for (int offset = 0; offset <= numSamples - fftSize; offset += hopSize)
+        {
+            std::fill (spectrum.begin(), spectrum.end(), 0.0f);
+
+            double energy = 0.0;
+            for (int i = 0; i < fftSize; ++i)
+            {
+                const float x = data[offset + i];
+                spectrum[static_cast<size_t> (i * 2)] = x * window[static_cast<size_t> (i)];
+                energy += (double) x * (double) x;
+            }
+
+            const double rms = std::sqrt (energy / fftSize);
+            if (rms < (double) globalPeak * 0.02)
+                continue;
+
+            fft.performRealOnlyForwardTransform (spectrum.data(), false);
+
+            float frameMax = 0.0f;
+            for (int k = minBin; k <= maxBin; ++k)
+                frameMax = juce::jmax (frameMax, magnitudeAt (k));
+
+            if (frameMax <= 1e-6f)
+                continue;
+
+            for (int k = minBin; k <= maxBin; ++k)
+            {
+                const float mag = magnitudeAt (k);
+
+                if (mag < frameMax * 0.05f)
+                    continue;
+
+                const bool leftOk  = k - 1 < minBin || magnitudeAt (k - 1) <= mag;
+                const bool rightOk = k + 1 > maxBin || magnitudeAt (k + 1) <= mag;
+                if (! leftOk || ! rightOk)
+                    continue;
+
+                const double freq   = (double) k * hzPerBin;
+                const double midi   = 69.0 + 12.0 * std::log2 (freq / 440.0);
+                const double nearest = 440.0 * std::pow (2.0, (std::round (midi) - 69.0) / 12.0);
+                const double cents  = 1200.0 * std::log2 (freq / nearest);
+
+                const int idx = (int) std::lround (cents) + halfRange;
+                if (idx >= 0 && idx < histSize)
+                    ++histogram[static_cast<size_t> (idx)];
+            }
+        }
+    }
+
+    std::vector<int> smooth (static_cast<size_t> (histSize), 0);
+    int total = 0;
+    for (int i = 0; i < histSize; ++i)
+    {
+        total += histogram[static_cast<size_t> (i)];
+        smooth[static_cast<size_t> (i)] = (histogram[static_cast<size_t> (i - 1 < 0 ? 0 : i - 1)]
+                                        + histogram[static_cast<size_t> (i)]
+                                        + histogram[static_cast<size_t> (i + 1 >= histSize ? i : i + 1)]) / 3;
+    }
+
+    if (total < 40)
+        return 0.0;
+
+    int best = halfRange;
+    int bestCount = 0;
+    for (int i = 0; i < histSize; ++i)
+    {
+        if (smooth[static_cast<size_t> (i)] > bestCount)
+        {
+            bestCount = smooth[static_cast<size_t> (i)];
+            best = i;
+        }
+    }
+
+    if (bestCount < total / 8)
+        return 0.0;
+
+    return (double) (best - halfRange);
+}

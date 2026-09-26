@@ -67,7 +67,7 @@ PlayScoreEditor::PlayScoreEditor (PlayScoreProcessor& p)
     exportButton.onClick = [this] { exportTempoMap(); };
     addAndMakeVisible (exportButton);
 
-    analysisLabel.setText (Text::from ("BPM: -- | Assinatura: -- | Compassos: -- | Duração: --:--"), juce::dontSendNotification);
+    analysisLabel.setText (Text::from ("BPM: -- | Assinatura: -- | Afinação: --Hz | Compassos: -- | Duração: --:--"), juce::dontSendNotification);
     addAndMakeVisible (analysisLabel);
 
     statusLabel.setText ("", juce::dontSendNotification);
@@ -101,6 +101,7 @@ void PlayScoreEditor::updateAnalysisLabel()
 {
     const double bpm = processor.getAudioBpm();
     const int meter = processor.getBeatsPerBar();
+    const double tuning = processor.getDetectedTuningHz();
     const int measures = processor.getMeasureCount();
     const double duration = processor.getDurationSeconds();
 
@@ -108,15 +109,15 @@ void PlayScoreEditor::updateAnalysisLabel()
 
     if (bpm <= 0.0 || duration <= 0.0)
     {
-        text = Text::from ("BPM: -- | Assinatura: -- | Compassos: -- | Duração: --:--");
+        text = Text::from ("BPM: -- | Assinatura: -- | Afinação: --Hz | Compassos: -- | Duração: --:--");
     }
     else
     {
         const int minutes = (int) (duration / 60.0);
         const int seconds = (int) duration - minutes * 60;
 
-        text = juce::String::formatted (Text::from ("BPM: %s | Assinatura: %d/4 | Compassos: %d | Duração: %02d:%02d"),
-                                        juce::String (bpm, 1), meter, measures, minutes, seconds);
+        text = juce::String::formatted (Text::from ("BPM: %s | Assinatura: %d/4 | Afinação: %.1fHz | Compassos: %d | Duração: %02d:%02d"),
+                                        juce::String (bpm, 1), meter, tuning, measures, minutes, seconds);
     }
 
     analysisLabel.setText (text, juce::dontSendNotification);

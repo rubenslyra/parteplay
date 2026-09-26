@@ -56,19 +56,20 @@ int PlayScoreProcessor::getCurrentSemitones() const
         : InstrumentTable::semitonesFor (selected);
 }
 
-double PlayScoreProcessor::computeCurrentPitchRatio() const
+double PlayScoreProcessor::computeCurrentPitchRatio (double baseFilePitchHz) const
 {
     if (pitchValue == nullptr)
         return 1.0;
 
     const double referencePitch = static_cast<double> (*pitchValue);
     return std::pow (2.0, getCurrentSemitones() / 12.0)
-         * (Tuning::defaultReferenceHz / referencePitch);
+         * (baseFilePitchHz != 0.0 ? referencePitch / baseFilePitchHz : 1.0);
 }
 
 void PlayScoreProcessor::timerCallback()
 {
-    const double ratio = computeCurrentPitchRatio();
+    const double basePitch = player != nullptr ? player->getDetectedTuningHz() : Tuning::defaultReferenceHz;
+    const double ratio = computeCurrentPitchRatio (basePitch);
 
     if (committedGeneration == fileGeneration
         && std::abs (ratio - committedPitchRatio) < 1e-4)
@@ -263,6 +264,11 @@ double PlayScoreProcessor::getAudioBpm() const noexcept
 int PlayScoreProcessor::getBeatsPerBar() const noexcept
 {
     return player != nullptr ? player->getBeatsPerBar() : 4;
+}
+
+double PlayScoreProcessor::getDetectedTuningHz() const noexcept
+{
+    return player != nullptr ? player->getDetectedTuningHz() : Tuning::defaultReferenceHz;
 }
 
 double PlayScoreProcessor::getDurationSeconds() const noexcept

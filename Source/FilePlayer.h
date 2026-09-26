@@ -19,6 +19,7 @@ public:
 
     double getBpm() const noexcept                  { return estimatedBpm; }
     int getBeatsPerBar() const noexcept             { return beatsPerBar; }
+    double getDetectedTuningHz() const noexcept     { return detectedTuningHz; }
     double getDurationSeconds() const noexcept      { return durationSeconds; }
     int getMeasureCount() const noexcept            { return measures; }
 
@@ -51,6 +52,7 @@ private:
 
     double estimatedBpm = 0.0;
     int beatsPerBar = 4;
+    double detectedTuningHz = 440.0;
     double durationSeconds = 0.0;
     int measures = 0;
 
