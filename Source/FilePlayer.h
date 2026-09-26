@@ -29,24 +29,32 @@ public:
                      juce::int64 hostStartSample,
                      double hostSampleRate);
 
-    // Acesso à fonte original e ao buffer transposto. Os shared_ptrs permitem
-    // capturar um snapshot barato (sem copiar o áudio) e manter o dado vivo
-    // enquanto outra thread ainda o estiver usando.
+    // Acesso à fonte original e ao buffer de reprodução (transposto / esticado).
+    // Os shared_ptrs permitem capturar um snapshot barato (sem copiar o áudio) e
+    // manter o dado vivo enquanto outra thread ainda o estiver usando.
     std::shared_ptr<const juce::AudioBuffer<float>> getSourceBuffer() const noexcept { return audioBuffer; }
-    double getAppliedPitchRatio() const noexcept { return appliedPitchRatio; }
 
-    void setTransposedBuffer (std::shared_ptr<const juce::AudioBuffer<float>> buffer, double pitchRatio)
+    void setPlaybackBuffer (std::shared_ptr<const juce::AudioBuffer<float>> buffer, double durationScale)
     {
-        transposedBuffer  = std::move (buffer);
-        appliedPitchRatio = pitchRatio;
+        playbackBuffer     = std::move (buffer);
+        appliedDurationScale = durationScale;
     }
+
+    void setLoop (bool enabled, int startMeasure, int endMeasure) noexcept
+    {
+        loopEnabled     = enabled;
+        loopStartMeasure = juce::jmax (1, startMeasure);
+        loopEndMeasure  = juce::jmax (loopStartMeasure, endMeasure);
+    }
+
+    bool isLoopActive() const noexcept { return loopEnabled; }
 
 private:
     void runTempoAnalysis();
 
     std::shared_ptr<const juce::AudioBuffer<float>> audioBuffer;
-    std::shared_ptr<const juce::AudioBuffer<float>> transposedBuffer;
-    double appliedPitchRatio = 1.0;
+    std::shared_ptr<const juce::AudioBuffer<float>> playbackBuffer;
+    double appliedDurationScale = 1.0;
     double fileSampleRate = 0.0;
     juce::String sourceFileName;
 
@@ -55,6 +63,10 @@ private:
     double detectedTuningHz = 440.0;
     double durationSeconds = 0.0;
     int measures = 0;
+
+    bool loopEnabled = false;
+    int loopStartMeasure = 1;
+    int loopEndMeasure = 1;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FilePlayer)
 };

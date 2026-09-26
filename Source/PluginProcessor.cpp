@@ -16,6 +16,10 @@ PlayScoreProcessor::PlayScoreProcessor()
     instrumentValue = parameters.getRawParameterValue (Parameter::instrument);
     pitchValue      = parameters.getRawParameterValue (Parameter::referencePitch);
     transposeValue  = parameters.getRawParameterValue (Parameter::transpose);
+    trainingSpeedValue = parameters.getRawParameterValue (Parameter::trainingSpeed);
+    loopEnabledValue   = parameters.getRawParameterValue (Parameter::loopEnabled);
+    loopStartValue     = parameters.getRawParameterValue (Parameter::loopStart);
+    loopEndValue       = parameters.getRawParameterValue (Parameter::loopEnd);
 
     player = std::make_unique<FilePlayer>();
 
@@ -41,6 +45,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout PlayScoreProcessor::createPa
 
     layout.add (std::make_unique<juce::AudioParameterInt> (Parameter::transpose, Text::from ("Transposição (semitons)"),
                   -12, 12, 0));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (Parameter::trainingSpeed, Text::from ("Velocidade (treino)"),
+                  juce::NormalisableRange<float> (0.5f, 1.5f, 0.01f), 1.0f));
+
+    layout.add (std::make_unique<juce::AudioParameterBool> (Parameter::loopEnabled, Text::from ("Loop"),
+                  false));
+
+    layout.add (std::make_unique<juce::AudioParameterInt> (Parameter::loopStart, Text::from ("Loop início (compasso)"),
+                  1, 10000, 1));
+    layout.add (std::make_unique<juce::AudioParameterInt> (Parameter::loopEnd, Text::from ("Loop fim (compasso)"),
+                  1, 10000, 1));
 
     return layout;
 }
@@ -68,11 +83,22 @@ double PlayScoreProcessor::computeCurrentPitchRatio (double baseFilePitchHz) con
 
 void PlayScoreProcessor::timerCallback()
 {
+    const double speed = (trainingSpeedValue != nullptr) ? (double) *trainingSpeedValue : 1.0;
+    const double durationScale = (speed > 0.0) ? (1.0 / speed) : 1.0;
+
+    const bool loopOn   = (loopEnabledValue != nullptr) && (*loopEnabledValue > 0.5f);
+    const int  loopFrom = (loopStartValue != nullptr) ? (int) *loopStartValue : 1;
+    const int  loopTo   = (loopEndValue != nullptr)   ? (int) *loopEndValue   : 1;
+
+    if (player != nullptr)
+        player->setLoop (loopOn, loopFrom, loopTo);
+
     const double basePitch = player != nullptr ? player->getDetectedTuningHz() : Tuning::defaultReferenceHz;
     const double ratio = computeCurrentPitchRatio (basePitch);
 
     if (committedGeneration == fileGeneration
-        && std::abs (ratio - committedPitchRatio) < 1e-4)
+        && std::abs (ratio - committedPitchRatio) < 1e-4
+        && std::abs (durationScale - committedDurationScale) < 1e-4)
         return;
 
     std::shared_ptr<const juce::AudioBuffer<float>> source;
@@ -86,24 +112,25 @@ void PlayScoreProcessor::timerCallback()
         source = player->getSourceBuffer();
     }
 
-    if (std::abs (ratio - 1.0) < 1e-4)
+    if (std::abs (ratio - 1.0) < 1e-4 && std::abs (durationScale - 1.0) < 1e-4)
     {
-        // Razão identidade: reprodução direta do original.
+        // Identidade: reprodução direta do original.
         const juce::ScopedLock sl (audioLock);
-        player->setTransposedBuffer (nullptr, 1.0);
+        player->setPlaybackBuffer (nullptr, 1.0);
     }
     else
     {
-        auto transposed = PitchShiftEngine::transpose (*source, ratio);
-        if (transposed == nullptr)
+        auto transformed = PitchShiftEngine::transform (*source, ratio, durationScale);
+        if (transformed == nullptr)
             return;
 
         const juce::ScopedLock sl (audioLock);
-        player->setTransposedBuffer (std::move (transposed), ratio);
+        player->setPlaybackBuffer (std::move (transformed), durationScale);
     }
 
     committedGeneration = fileGeneration;
     committedPitchRatio = ratio;
+    committedDurationScale = durationScale;
 }
 
 const juce::String PlayScoreProcessor::getName() const
@@ -269,6 +296,26 @@ int PlayScoreProcessor::getBeatsPerBar() const noexcept
 double PlayScoreProcessor::getDetectedTuningHz() const noexcept
 {
     return player != nullptr ? player->getDetectedTuningHz() : Tuning::defaultReferenceHz;
+}
+
+double PlayScoreProcessor::getTrainingSpeed() const noexcept
+{
+    return trainingSpeedValue != nullptr ? (double) *trainingSpeedValue : 1.0;
+}
+
+bool PlayScoreProcessor::isLoopEnabled() const noexcept
+{
+    return loopEnabledValue != nullptr && *loopEnabledValue > 0.5f;
+}
+
+int PlayScoreProcessor::getLoopStartMeasure() const noexcept
+{
+    return loopStartValue != nullptr ? (int) *loopStartValue : 1;
+}
+
+int PlayScoreProcessor::getLoopEndMeasure() const noexcept
+{
+    return loopEndValue != nullptr ? (int) *loopEndValue : 1;
 }
 
 double PlayScoreProcessor::getDurationSeconds() const noexcept

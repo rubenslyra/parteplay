@@ -53,15 +53,24 @@ namespace
         return window;
     }
 
-    // Inverso da soma dos quadrados das janelas que cobrem cada amostra.
+    // Inverso da soma dos quadrados das janelas que cobrem cada amostra da saída.
     // Aplicado por amostra dá ganho unitário ao overlap-add (reconstrução COLA).
-    std::vector<float> makeNormalisation (int numSamples, const std::vector<float>& window)
+    // Os quadros de síntese são espaçados por synthHop (=> duração escalada).
+    std::vector<float> makeNormalisation (int numOut, double synthHop,
+                                          int numIn, int frameCount,
+                                          const std::vector<float>& window)
     {
-        std::vector<float> sum (static_cast<size_t> (numSamples), 0.0f);
+        std::vector<float> sum (static_cast<size_t> (numOut), 0.0f);
 
-        for (int offset = 0; offset < numSamples; offset += hopSize)
+        juce::ignoreUnused (numIn);
+
+        for (int frame = 0; frame < frameCount; ++frame)
         {
-            const int valid = juce::jmin (fftSize, numSamples - offset);
+            const int offset = (int) std::lround ((double) frame * synthHop);
+            if (offset >= numOut)
+                break;
+
+            const int valid = juce::jmin (fftSize, numOut - offset);
 
             for (int i = 0; i < valid; ++i)
             {
@@ -85,12 +94,12 @@ namespace
         return false;
     }
 
-    void transposeChannel (const float* input, int numSamples, float* output,
-                           double pitchRatio, const juce::dsp::FFT& fft,
+    void transformChannel (const float* input, int numIn, float* output, int numOut,
+                           double pitchRatio, double synthHop, const juce::dsp::FFT& fft,
                            const std::vector<float>& window,
                            const std::vector<float>& normalisation)
     {
-        std::fill (output, output + numSamples, 0.0f);
+        std::fill (output, output + numOut, 0.0f);
 
         std::vector<float> spectrum (static_cast<size_t> (fftSize * 2), 0.0f);
         std::vector<double> phaseAcc   (static_cast<size_t> (numBins), 0.0);
@@ -99,12 +108,18 @@ namespace
 
         const double binOmega = juce::MathConstants<double>::twoPi / fftSize;
 
-        for (int offset = 0; offset < numSamples; offset += hopSize)
+        for (int frame = 0;; ++frame)
         {
+            const int analysisOffset = frame * hopSize;
+            if (analysisOffset >= numIn)
+                break;
+
+            const int synthOffset = (int) std::lround ((double) frame * synthHop);
+
             for (int i = 0; i < fftSize; ++i)
             {
-                const int idx = offset + i;
-                const float x = (idx < numSamples) ? input[idx] : 0.0f;
+                const int idx = analysisOffset + i;
+                const float x = (idx < numIn) ? input[idx] : 0.0f;
 
                 spectrum[static_cast<size_t> (i * 2)] = x * window[static_cast<size_t> (i)];
             }
@@ -133,7 +148,7 @@ namespace
                     wrapToPi (phaseDiff);
 
                     const double trueFreq = omega + phaseDiff / hopSize;
-                    phaseAcc[static_cast<size_t> (k)] += trueFreq * pitchRatio * hopSize;
+                    phaseAcc[static_cast<size_t> (k)] += trueFreq * pitchRatio * synthHop;
 
                     prevPhase[static_cast<size_t> (k)] = phase;
                 }
@@ -144,11 +159,11 @@ namespace
 
             fft.performRealOnlyInverseTransform (spectrum.data());
 
-            const int valid = juce::jmin (fftSize, numSamples - offset);
+            const int valid = juce::jmax (0, juce::jmin (fftSize, numOut - synthOffset));
 
             for (int i = 0; i < valid; ++i)
             {
-                const int idx = offset + i;
+                const int idx = synthOffset + i;
                 output[idx]  += spectrum[static_cast<size_t> (i)]
                               * window[static_cast<size_t> (i)]
                               * normalisation[static_cast<size_t> (idx)];
@@ -157,28 +172,33 @@ namespace
     }
 }
 
-std::unique_ptr<juce::AudioBuffer<float>> PitchShiftEngine::transpose (
-    const juce::AudioBuffer<float>& input, double pitchRatio)
+std::unique_ptr<juce::AudioBuffer<float>> PitchShiftEngine::transform (
+    const juce::AudioBuffer<float>& input, double pitchRatio, double durationScale)
 {
-    if (input.getNumChannels() < 1 || input.getNumSamples() < 1 || ! isValidRatio (pitchRatio))
+    if (input.getNumChannels() < 1 || input.getNumSamples() < 1
+        || ! isValidRatio (pitchRatio) || ! std::isfinite (durationScale) || durationScale <= 0.0)
         return nullptr;
 
     juce::ScopedNoDenormals noDenormals;
 
-    auto result = std::make_unique<juce::AudioBuffer<float>> (input.getNumChannels(), input.getNumSamples());
+    const int numIn  = input.getNumSamples();
+    const int numOut = juce::jmax (1, (int) std::lround ((double) numIn * durationScale));
+    const double synthHop = juce::jmax (1.0, (double) hopSize * durationScale);
+    const int frameCount  = (numIn + hopSize - 1) / hopSize;
+
+    auto result = std::make_unique<juce::AudioBuffer<float>> (input.getNumChannels(), numOut);
     result->clear();
 
     const juce::dsp::FFT fft (fftOrder);
     const std::vector<float> window = makeWindow();
-    const std::vector<float> normalisation = makeNormalisation (input.getNumSamples(), window);
+    const std::vector<float> normalisation = makeNormalisation (numOut, synthHop, numIn, frameCount, window);
 
     for (int ch = 0; ch < input.getNumChannels(); ++ch)
     {
-        transposeChannel (input.getReadPointer (ch), input.getNumSamples(),
-                          result->getWritePointer (ch), pitchRatio,
-                          fft, window, normalisation);
+        transformChannel (input.getReadPointer (ch), numIn, result->getWritePointer (ch), numOut,
+                          pitchRatio, synthHop, fft, window, normalisation);
 
-        if (containsNonFinite (result->getReadPointer (ch), result->getNumSamples()))
+        if (containsNonFinite (result->getReadPointer (ch), numOut))
             return nullptr;
     }
 

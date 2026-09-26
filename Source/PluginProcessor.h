@@ -46,6 +46,10 @@ public:
     double getAudioBpm() const noexcept;
     int getBeatsPerBar() const noexcept;
     double getDetectedTuningHz() const noexcept;
+    double getTrainingSpeed() const noexcept;
+    bool isLoopEnabled() const noexcept;
+    int getLoopStartMeasure() const noexcept;
+    int getLoopEndMeasure() const noexcept;
     double getDurationSeconds() const noexcept;
     int getMeasureCount() const noexcept;
 
@@ -63,12 +67,17 @@ private:
 
     // Controle da transposição (message thread via Timer).
     double committedPitchRatio = 1.0;
+    double committedDurationScale = 1.0;
     long long fileGeneration  = 0;   // incrementado a cada carregamento
     long long committedGeneration = -1;
 
     std::atomic<float>* instrumentValue = nullptr;
     std::atomic<float>* pitchValue = nullptr;
     std::atomic<float>* transposeValue = nullptr;
+    std::atomic<float>* trainingSpeedValue = nullptr;
+    std::atomic<float>* loopEnabledValue = nullptr;
+    std::atomic<float>* loopStartValue = nullptr;
+    std::atomic<float>* loopEndValue = nullptr;
 
     std::atomic<bool> transportPlaying { false };
     std::atomic<int64_t> transportSample { 0 };

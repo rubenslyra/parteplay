@@ -7,7 +7,7 @@
 PlayScoreEditor::PlayScoreEditor (PlayScoreProcessor& p)
     : AudioProcessorEditor (&p), processor (p)
 {
-    setSize (480, 372);
+    setSize (480, 452);
 
     loadButton.setButtonText (Text::from ("Carregar Áudio"));
     loadButton.onClick = [this]
@@ -61,6 +61,45 @@ PlayScoreEditor::PlayScoreEditor (PlayScoreProcessor& p)
 
     transposeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         processor.parameters, Parameter::transpose, transposeSlider);
+
+    speedLabel.setText (Text::from ("Velocidade (treino %):"), juce::dontSendNotification);
+    addAndMakeVisible (speedLabel);
+
+    speedSlider.setRange (50.0, 150.0, 1.0);
+    speedSlider.setValue (100.0);
+    speedSlider.setTextValueSuffix (Text::from (" %"));
+    addAndMakeVisible (speedSlider);
+
+    speedAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+        processor.parameters, Parameter::trainingSpeed, speedSlider);
+
+    loopStartLabel.setText (Text::from ("Loop início (compasso):"), juce::dontSendNotification);
+    addAndMakeVisible (loopStartLabel);
+
+    loopStartSlider.setRange (1.0, 8.0, 1.0);
+    loopStartSlider.setValue (1.0);
+    loopStartSlider.setSkewFactor (1.0);
+    addAndMakeVisible (loopStartSlider);
+
+    loopStartAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+        processor.parameters, Parameter::loopStart, loopStartSlider);
+
+    loopEndLabel.setText (Text::from ("Loop fim (compasso):"), juce::dontSendNotification);
+    addAndMakeVisible (loopEndLabel);
+
+    loopEndSlider.setRange (1.0, 8.0, 1.0);
+    loopEndSlider.setValue (1.0);
+    loopEndSlider.setSkewFactor (1.0);
+    addAndMakeVisible (loopEndSlider);
+
+    loopEndAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+        processor.parameters, Parameter::loopEnd, loopEndSlider);
+
+    loopToggle.setButtonText (Text::from ("Repetir trecho"));
+    addAndMakeVisible (loopToggle);
+
+    loopToggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+        processor.parameters, Parameter::loopEnabled, loopToggle);
 
     exportButton.setButtonText (Text::from ("Exportar Mapa (.mid)"));
     exportButton.setEnabled (false);
@@ -121,6 +160,12 @@ void PlayScoreEditor::updateAnalysisLabel()
     }
 
     analysisLabel.setText (text, juce::dontSendNotification);
+
+    const int loopMax = juce::jmax (2, measures);
+    if ((int) loopStartSlider.getMaximum() != loopMax)
+        loopStartSlider.setRange (1.0, (double) loopMax, 1.0);
+    if ((int) loopEndSlider.getMaximum() != loopMax)
+        loopEndSlider.setRange (1.0, (double) loopMax, 1.0);
 }
 
 void PlayScoreEditor::updateStatusLabel()
@@ -133,13 +178,42 @@ void PlayScoreEditor::updateStatusLabel()
 
     juce::String text;
 
-    if (! processor.isTransportPlaying())
+    const double speed = processor.getTrainingSpeed();
+    const bool loopActive = processor.isLoopEnabled();
+
+    if (speed != 1.0 || loopActive)
     {
-        text = "Pausado";
+        juce::String state = Text::from ("Treino |");
+
+        if (speed != 1.0)
+            state += Text::from (" ") + juce::String (speed * 100.0, 0) + Text::from ("%");
+
+        if (loopActive)
+            state += Text::from (" | Loop ") + juce::String (processor.getLoopStartMeasure())
+                   + Text::from ("-") + juce::String (processor.getLoopEndMeasure());
+
+        if (! processor.isTransportPlaying())
+        {
+            text = state + Text::from (" | Pausado");
+        }
+        else
+        {
+            const auto sample = processor.getTransportSample();
+            const auto rate = processor.getTransportSampleRate();
+            const double seconds = rate > 0.0 ? static_cast<double> (sample) / rate : 0.0;
+
+            text = juce::String::formatted (Text::from ("%s | %02d:%05.2f"),
+                                            state, static_cast<int> (seconds) / 60,
+                                            seconds - static_cast<int> (seconds / 60.0) * 60.0);
+        }
+    }
+    else if (! processor.isTransportPlaying())
+    {
+        text = Text::from ("Pausado");
     }
     else if (processor.hasReachedEndOfFile())
     {
-        text = "Fim do arquivo";
+        text = Text::from ("Fim do arquivo");
     }
     else
     {
@@ -203,9 +277,18 @@ void PlayScoreEditor::resized()
     transposeLabel.setBounds (margin, 172, 170, 20);
     transposeSlider.setBounds (margin + 180, 172, getWidth() - margin * 2 - 180, 22);
 
-    analysisLabel.setBounds (margin, 208, getWidth() - margin * 2, 22);
-    statusLabel.setBounds (margin, 240, getWidth() - margin * 2, 22);
-    exportButton.setBounds (margin, 272, 220, 26);
+    speedLabel.setBounds (margin, 204, 150, 20);
+    speedSlider.setBounds (margin + 160, 204, getWidth() - margin * 2 - 160, 22);
+
+    loopStartLabel.setBounds (margin, 236, 150, 20);
+    loopStartSlider.setBounds (margin + 160, 236, getWidth() - margin * 2 - 160, 22);
+
+    loopEndLabel.setBounds (margin, 268, 150, 20);
+    loopEndSlider.setBounds (margin + 160, 268, getWidth() - margin * 2 - 160, 22);
+
+    analysisLabel.setBounds (margin, 300, getWidth() - margin * 2, 22);
+    statusLabel.setBounds (margin, 332, getWidth() - margin * 2, 22);
+    exportButton.setBounds (margin, 364, 220, 26);
 }
 
 void PlayScoreEditor::exportTempoMap()

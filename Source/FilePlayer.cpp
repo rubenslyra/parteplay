@@ -24,8 +24,8 @@ void FilePlayer::loadFromFile (const juce::File& file)
         return;
 
     audioBuffer      = std::move (newBuffer);
-    transposedBuffer.reset();
-    appliedPitchRatio = 1.0;
+    playbackBuffer.reset();
+    appliedDurationScale = 1.0;
     fileSampleRate   = reader->sampleRate;
     sourceFileName   = file.getFileName();
     durationSeconds  = fileSampleRate > 0.0 ? (double) reader->lengthInSamples / fileSampleRate : 0.0;
@@ -36,8 +36,8 @@ void FilePlayer::loadFromFile (const juce::File& file)
 void FilePlayer::clear()
 {
     audioBuffer.reset();
-    transposedBuffer.reset();
-    appliedPitchRatio = 1.0;
+    playbackBuffer.reset();
+    appliedDurationScale = 1.0;
     fileSampleRate = 0.0;
     sourceFileName.clear();
     estimatedBpm = 0.0;
@@ -45,6 +45,9 @@ void FilePlayer::clear()
     detectedTuningHz = Tuning::defaultReferenceHz;
     durationSeconds = 0.0;
     measures = 0;
+    loopEnabled = false;
+    loopStartMeasure = 1;
+    loopEndMeasure = 1;
 }
 
 void FilePlayer::runTempoAnalysis()
@@ -79,10 +82,11 @@ bool FilePlayer::fillOutput (juce::AudioBuffer<float>& dest,
     if (fileSampleRate <= 0.0 || hostSampleRate <= 0.0)
         return false;
 
-    // Quando há buffer transposto disponível, toca a versão transposta; caso
-    // contrário, usa o original. Ambos têm a mesma taxa e o mesmo comprimento,
-    // portanto o mapeamento transport->amostra do arquivo permanece válido.
-    const auto* source = transposedBuffer != nullptr ? transposedBuffer.get() : audioBuffer.get();
+    // Quando há buffer de reprodução disponível (transposto/esticado), toca-o;
+    // caso contrário, usa o original. O buffer de reprodução tem o mesmo sample
+    // rate do arquivo e o mapeamento transport->amostra permanece 1:1 (a duração
+    // escalada já está embutida no conteúdo), preservando a sincronia.
+    const auto* source = playbackBuffer != nullptr ? playbackBuffer.get() : audioBuffer.get();
 
     if (source == nullptr)
         return false;
@@ -94,6 +98,21 @@ bool FilePlayer::fillOutput (juce::AudioBuffer<float>& dest,
     const int fileLen = source->getNumSamples();
     const double interpStep = fileSampleRate / hostSampleRate;
     double srcPos = static_cast<double> (hostStartSample) * interpStep;
+
+    // Loop de treino: repete o trecho entre os compassos [início, fim].
+    if (loopEnabled && estimatedBpm > 0.0)
+    {
+        const double measureSamples = (beatsPerBar * 60.0 / estimatedBpm) * appliedDurationScale * fileSampleRate;
+        const auto loopStart = static_cast<juce::int64> (std::lround ((loopStartMeasure - 1) * measureSamples));
+        const auto loopEnd   = static_cast<juce::int64> (std::lround ((double) loopEndMeasure * measureSamples));
+        const auto loopLen   = loopEnd - loopStart;
+
+        if (loopStart >= 0 && loopLen > static_cast<juce::int64> (fileSampleRate / 4.0))
+        {
+            const double wrapped = (double) loopStart + std::fmod (srcPos - (double) loopStart, (double) loopLen);
+            srcPos = (wrapped < (double) loopStart) ? wrapped + (double) loopLen : wrapped;
+        }
+    }
 
     bool reachedEnd = false;
 

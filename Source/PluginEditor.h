@@ -35,6 +35,15 @@ private:
     juce::Label transposeLabel;
     juce::Slider transposeSlider;
 
+    juce::ToggleButton trainingToggle;
+    juce::Label speedLabel;
+    juce::Slider speedSlider;
+    juce::ToggleButton loopToggle;
+    juce::Label loopStartLabel;
+    juce::Slider loopStartSlider;
+    juce::Label loopEndLabel;
+    juce::Slider loopEndSlider;
+
     juce::TextButton exportButton;
 
     juce::Label analysisLabel;
@@ -48,6 +57,11 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> instrumentAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> pitchAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> transposeAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> trainingToggleAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> speedAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> loopToggleAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> loopStartAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> loopEndAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PlayScoreEditor)
 };
