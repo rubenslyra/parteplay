@@ -1,4 +1,4 @@
-#include "FilePlayer.h"
+﻿#include "FilePlayer.h"
 #include "TempoAnalyser.h"
 
 #include <cmath>
@@ -14,7 +14,7 @@ void FilePlayer::loadFromFile (const juce::File& file)
     if (reader == nullptr)
         return;
 
-    auto newBuffer = std::make_unique<juce::AudioBuffer<float>> (
+    auto newBuffer = std::make_shared<juce::AudioBuffer<float>> (
         static_cast<int> (reader->numChannels),
         static_cast<int> (reader->lengthInSamples));
 
@@ -24,6 +24,8 @@ void FilePlayer::loadFromFile (const juce::File& file)
         return;
 
     audioBuffer      = std::move (newBuffer);
+    transposedBuffer.reset();
+    appliedPitchRatio = 1.0;
     fileSampleRate   = reader->sampleRate;
     sourceFileName   = file.getFileName();
     durationSeconds  = fileSampleRate > 0.0 ? (double) reader->lengthInSamples / fileSampleRate : 0.0;
@@ -34,42 +36,57 @@ void FilePlayer::loadFromFile (const juce::File& file)
 void FilePlayer::clear()
 {
     audioBuffer.reset();
+    transposedBuffer.reset();
+    appliedPitchRatio = 1.0;
     fileSampleRate = 0.0;
     sourceFileName.clear();
     estimatedBpm = 0.0;
+    beatsPerBar = 4;
     durationSeconds = 0.0;
-    measures44 = 0;
+    measures = 0;
 }
 
 void FilePlayer::runTempoAnalysis()
 {
     estimatedBpm = 0.0;
-    measures44 = 0;
+    beatsPerBar = 4;
+    measures = 0;
 
     if (audioBuffer == nullptr || fileSampleRate <= 0.0)
         return;
 
     estimatedBpm = TempoAnalyser::estimateBpm (fileSampleRate, *audioBuffer);
 
-    if (estimatedBpm > 0.0 && durationSeconds > 0.0)
-        measures44 = (int) std::llround (durationSeconds * estimatedBpm / 60.0 / 4.0);
+    if (estimatedBpm > 0.0)
+        beatsPerBar = TempoAnalyser::estimateBeatsPerBar (fileSampleRate, *audioBuffer, estimatedBpm);
 
-    if (measures44 < 0)
-        measures44 = 0;
+    if (estimatedBpm > 0.0 && durationSeconds > 0.0)
+        measures = (int) std::llround (durationSeconds * estimatedBpm / 60.0 / (double) beatsPerBar);
+
+    if (measures < 0)
+        measures = 0;
 }
 
 bool FilePlayer::fillOutput (juce::AudioBuffer<float>& dest,
                              juce::int64 hostStartSample,
                              double hostSampleRate)
 {
-    if (audioBuffer == nullptr || fileSampleRate <= 0.0 || hostSampleRate <= 0.0)
+    if (fileSampleRate <= 0.0 || hostSampleRate <= 0.0)
+        return false;
+
+    // Quando há buffer transposto disponível, toca a versão transposta; caso
+    // contrário, usa o original. Ambos têm a mesma taxa e o mesmo comprimento,
+    // portanto o mapeamento transport->amostra do arquivo permanece válido.
+    const auto* source = transposedBuffer != nullptr ? transposedBuffer.get() : audioBuffer.get();
+
+    if (source == nullptr)
         return false;
 
     const int numOut = dest.getNumSamples();
     if (numOut <= 0)
         return true;
 
-    const int fileLen = audioBuffer->getNumSamples();
+    const int fileLen = source->getNumSamples();
     const double interpStep = fileSampleRate / hostSampleRate;
     double srcPos = static_cast<double> (hostStartSample) * interpStep;
 
@@ -77,7 +94,7 @@ bool FilePlayer::fillOutput (juce::AudioBuffer<float>& dest,
 
     for (int ch = 0; ch < dest.getNumChannels(); ++ch)
     {
-        const float* src = audioBuffer->getReadPointer (juce::jmin (ch, audioBuffer->getNumChannels() - 1));
+        const float* src = source->getReadPointer (juce::jmin (ch, source->getNumChannels() - 1));
         float* out = dest.getWritePointer (ch);
 
         double pos = srcPos;

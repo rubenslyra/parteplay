@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.22)
+﻿cmake_minimum_required(VERSION 3.22)
 
 project(PartePlay VERSION 0.1.0 LANGUAGES C CXX)
 
@@ -31,10 +31,13 @@ target_sources(PartePlay PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/FilePlayer.cpp
+    Source/Instrument.cpp
+    Source/MidiMapExporter.cpp
+    Source/PitchShifter.cpp
     Source/TempoAnalyser.cpp
 )
 
-target_link_libraries(PartePlay PRIVATE juce::juce_audio_formats)
+target_link_libraries(PartePlay PRIVATE juce::juce_audio_formats juce::juce_dsp)
 
 juce_add_binary_data(BinaryData SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/PartePlay-Icon.png")
 target_link_libraries(PartePlay PRIVATE BinaryData)

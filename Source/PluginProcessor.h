@@ -1,10 +1,11 @@
-#pragma once
+﻿#pragma once
 
 #include <JuceHeader.h>
 
 #include "FilePlayer.h"
 
-class PlayScoreProcessor : public juce::AudioProcessor
+class PlayScoreProcessor : public juce::AudioProcessor,
+                           private juce::Timer
 {
 public:
     PlayScoreProcessor();
@@ -34,6 +35,7 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     void loadAudioFile (const juce::File& file);
+    bool exportTempoMap (const juce::File& file);
 
     bool isTransportPlaying() const noexcept;
     juce::int64 getTransportSample() const noexcept;
@@ -42,6 +44,7 @@ public:
     bool hasReachedEndOfFile() const noexcept;
     juce::String getLoadedFileName() const noexcept;
     double getAudioBpm() const noexcept;
+    int getBeatsPerBar() const noexcept;
     double getDurationSeconds() const noexcept;
     int getMeasureCount() const noexcept;
 
@@ -49,12 +52,18 @@ public:
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
-    static Instrument instrumentFromIndex (int index);
-    static int semitonesForInstrument (Instrument instrument);
+    int getCurrentSemitones() const;
     void resetPlaybackState();
+    void timerCallback() override;
+    double computeCurrentPitchRatio() const;
 
     std::unique_ptr<FilePlayer> player;
     juce::CriticalSection audioLock;
+
+    // Controle da transposição (message thread via Timer).
+    double committedPitchRatio = 1.0;
+    long long fileGeneration  = 0;   // incrementado a cada carregamento
+    long long committedGeneration = -1;
 
     std::atomic<float>* instrumentValue = nullptr;
     std::atomic<float>* pitchValue = nullptr;
@@ -64,7 +73,6 @@ private:
     std::atomic<int64_t> transportSample { 0 };
     std::atomic<double> transportSampleRate { 0.0 };
     std::atomic<int> activeSemitones { 0 };
-    std::atomic<double> referencePitchHz { 440.0 };
     std::atomic<bool> reachedEnd { false };
 
     juce::String loadedFileName;

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <JuceHeader.h>
 
@@ -19,6 +19,7 @@ private:
     void updateFileLabel();
     void updateAnalysisLabel();
     void updateStatusLabel();
+    void exportTempoMap();
 
     PlayScoreProcessor& processor;
 
@@ -34,10 +35,15 @@ private:
     juce::Label transposeLabel;
     juce::Slider transposeSlider;
 
+    juce::TextButton exportButton;
+
     juce::Label analysisLabel;
     juce::Label statusLabel;
 
+    juce::String exportMessage;
+
     std::unique_ptr<juce::FileChooser> fileChooser;
+    std::unique_ptr<juce::FileChooser> exportChooser;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> instrumentAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> pitchAttachment;

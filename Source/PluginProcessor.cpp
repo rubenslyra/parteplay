@@ -1,76 +1,108 @@
-#include "PluginProcessor.h"
+﻿#include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "Instrument.h"
+#include "ParameterIds.h"
+#include "PitchShifter.h"
+#include "MidiMapExporter.h"
+#include "Text.h"
 
-namespace
-{
-    const juce::String instrumentId = "instrument";
-    const juce::String referencePitchId = "referencePitch";
-    const juce::String transposeId = "transpose";
-
-    const juce::StringArray instrumentChoices
-    {
-        "Piano / Trombone (C)",
-        "Trompete / Sax Tenor (Bb)",
-        "Sax Alto (Eb)",
-        "Trompa (F)",
-        "Ajuste Manual"
-    };
-}
+#include <cmath>
 
 PlayScoreProcessor::PlayScoreProcessor()
     : AudioProcessor (BusesProperties().withInput ("Input", juce::AudioChannelSet::stereo(), true)
                                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       parameters (*this, nullptr, "Parameters", createParameterLayout())
 {
-    instrumentValue = parameters.getRawParameterValue (instrumentId);
-    pitchValue      = parameters.getRawParameterValue (referencePitchId);
-    transposeValue  = parameters.getRawParameterValue (transposeId);
+    instrumentValue = parameters.getRawParameterValue (Parameter::instrument);
+    pitchValue      = parameters.getRawParameterValue (Parameter::referencePitch);
+    transposeValue  = parameters.getRawParameterValue (Parameter::transpose);
 
     player = std::make_unique<FilePlayer>();
+
+    startTimerHz (4);
 }
 
-PlayScoreProcessor::~PlayScoreProcessor() = default;
+PlayScoreProcessor::~PlayScoreProcessor()
+{
+    stopTimer();
+}
 
 juce::AudioProcessorValueTreeState::ParameterLayout PlayScoreProcessor::createParameterLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
-    layout.add (std::make_unique<juce::AudioParameterChoice> (instrumentId, "Instrumento",
-                                                              instrumentChoices, 0));
+    layout.add (std::make_unique<juce::AudioParameterChoice> (Parameter::instrument, Text::from ("Instrumento"),
+                                                              InstrumentTable::getDisplayNames(), 0));
 
-    layout.add (std::make_unique<juce::AudioParameterFloat> (referencePitchId, "Afinação (Hz)",
-                  juce::NormalisableRange<float> (432.0f, 445.0f, 0.1f), 440.0f));
+    layout.add (std::make_unique<juce::AudioParameterFloat> (Parameter::referencePitch, Text::from ("Afinação (Hz)"),
+                  juce::NormalisableRange<float> ((float) Tuning::minReferenceHz,
+                                                  (float) Tuning::maxReferenceHz, 0.1f),
+                  (float) Tuning::defaultReferenceHz));
 
-    layout.add (std::make_unique<juce::AudioParameterInt> (transposeId, "Transposição (semitons)",
+    layout.add (std::make_unique<juce::AudioParameterInt> (Parameter::transpose, Text::from ("Transposição (semitons)"),
                   -12, 12, 0));
 
     return layout;
 }
 
-Instrument PlayScoreProcessor::instrumentFromIndex (int index)
+int PlayScoreProcessor::getCurrentSemitones() const
 {
-    switch (index)
-    {
-        case 1:  return Instrument::TrumpetBb;
-        case 2:  return Instrument::SaxAltoEb;
-        case 3:  return Instrument::FrenchHornF;
-        case 4:  return Instrument::Manual;
-        default: return Instrument::PianoC;
-    }
+    if (instrumentValue == nullptr || transposeValue == nullptr)
+        return 0;
+
+    const auto selected = InstrumentTable::fromIndex (static_cast<int> (*instrumentValue));
+    return (selected == Instrument::Manual)
+        ? static_cast<int> (*transposeValue)
+        : InstrumentTable::semitonesFor (selected);
 }
 
-int PlayScoreProcessor::semitonesForInstrument (Instrument instrument)
+double PlayScoreProcessor::computeCurrentPitchRatio() const
 {
-    switch (instrument)
+    if (pitchValue == nullptr)
+        return 1.0;
+
+    const double referencePitch = static_cast<double> (*pitchValue);
+    return std::pow (2.0, getCurrentSemitones() / 12.0)
+         * (Tuning::defaultReferenceHz / referencePitch);
+}
+
+void PlayScoreProcessor::timerCallback()
+{
+    const double ratio = computeCurrentPitchRatio();
+
+    if (committedGeneration == fileGeneration
+        && std::abs (ratio - committedPitchRatio) < 1e-4)
+        return;
+
+    std::shared_ptr<const juce::AudioBuffer<float>> source;
+
     {
-        case Instrument::TrumpetBb:
-        case Instrument::SaxTenorBb: return -2;
-        case Instrument::SaxAltoEb:  return 3;
-        case Instrument::FrenchHornF:return -5;
-        case Instrument::PianoC:
-        case Instrument::Manual:
-        default:                     return 0;
+        const juce::ScopedLock sl (audioLock);
+
+        if (player == nullptr || ! player->hasAudio())
+            return;
+
+        source = player->getSourceBuffer();
     }
+
+    if (std::abs (ratio - 1.0) < 1e-4)
+    {
+        // Razão identidade: reprodução direta do original.
+        const juce::ScopedLock sl (audioLock);
+        player->setTransposedBuffer (nullptr, 1.0);
+    }
+    else
+    {
+        auto transposed = PitchShiftEngine::transpose (*source, ratio);
+        if (transposed == nullptr)
+            return;
+
+        const juce::ScopedLock sl (audioLock);
+        player->setTransposedBuffer (std::move (transposed), ratio);
+    }
+
+    committedGeneration = fileGeneration;
+    committedPitchRatio = ratio;
 }
 
 const juce::String PlayScoreProcessor::getName() const
@@ -105,17 +137,7 @@ void PlayScoreProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     juce::ScopedNoDenormals noDenormals;
     buffer.clear();
 
-    if (pitchValue != nullptr)
-        referencePitchHz.store (static_cast<double> (*pitchValue), std::memory_order_relaxed);
-
-    if (instrumentValue != nullptr && transposeValue != nullptr)
-    {
-        const auto selectedInstrument = instrumentFromIndex (static_cast<int> (*instrumentValue));
-        const int semitones = (selectedInstrument == Instrument::Manual)
-            ? static_cast<int> (*transposeValue)
-            : semitonesForInstrument (selectedInstrument);
-        activeSemitones.store (semitones, std::memory_order_relaxed);
-    }
+    activeSemitones.store (getCurrentSemitones(), std::memory_order_relaxed);
 
     auto playHead = getPlayHead();
     if (playHead == nullptr)
@@ -179,6 +201,21 @@ void PlayScoreProcessor::loadAudioFile (const juce::File& file)
     player = std::move (newPlayer);
     loadedFileName = player->getSourceFileName();
     reachedEnd.store (false, std::memory_order_relaxed);
+    ++fileGeneration;
+}
+
+bool PlayScoreProcessor::exportTempoMap (const juce::File& file)
+{
+    const juce::ScopedLock sl (audioLock);
+
+    if (player == nullptr || ! player->hasAudio())
+        return false;
+
+    const double bpm = player->getBpm();
+    if (bpm <= 0.0)
+        return false;
+
+    return MidiMapExporter::writeTempoMap (file, bpm, player->getBeatsPerBar());
 }
 
 juce::AudioProcessorEditor* PlayScoreProcessor::createEditor()
@@ -223,6 +260,11 @@ double PlayScoreProcessor::getAudioBpm() const noexcept
     return player != nullptr ? player->getBpm() : 0.0;
 }
 
+int PlayScoreProcessor::getBeatsPerBar() const noexcept
+{
+    return player != nullptr ? player->getBeatsPerBar() : 4;
+}
+
 double PlayScoreProcessor::getDurationSeconds() const noexcept
 {
     return player != nullptr ? player->getDurationSeconds() : 0.0;
@@ -230,7 +272,7 @@ double PlayScoreProcessor::getDurationSeconds() const noexcept
 
 int PlayScoreProcessor::getMeasureCount() const noexcept
 {
-    return player != nullptr ? player->getMeasureCount44() : 0;
+    return player != nullptr ? player->getMeasureCount() : 0;
 }
 
 void PlayScoreProcessor::getStateInformation (juce::MemoryBlock& destData)
