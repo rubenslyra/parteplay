@@ -1,4 +1,4 @@
-# 🎵 PARTE 1 — CÓDIGO: TRANSPOSIÇÃO INTELIGENTE + RUBBER BAND
+﻿# 🎵 PARTE 1 — CÓDIGO: TRANSPOSIÇÃO INTELIGENTE + RUBBER BAND
 
 Vamos integrar a biblioteca **Rubber Band** — padrão mundial de qualidade para pitch-shifting com time-stretching independente. O som muda de altura **sem acelerar nem desacelerar**.
 

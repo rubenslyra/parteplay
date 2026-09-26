@@ -1,4 +1,4 @@
-# 📦 PARTE 1 — CRIAR O INSTALADOR
+﻿# 📦 PARTE 1 — CRIAR O INSTALADOR
 
 Usamos **Inno Setup** — gratuito, leve, padrão de mercado.
 

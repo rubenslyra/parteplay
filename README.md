@@ -1,4 +1,4 @@
-# 📑 REVALIDAÇÃO E ESTRUTURA COMPLETA DO PROJETO
+﻿# 📑 REVALIDAÇÃO E ESTRUTURA COMPLETA DO PROJETO
 **Projeto:** PartePlay / PlayScore
 **Data:** 25/09/2026 | **Status:** Em desenvolvimento — núcleo de sincronia implementado, retomada
 **Ambiente:** MuseScore 4 (VST3) + DAWs compatíveis

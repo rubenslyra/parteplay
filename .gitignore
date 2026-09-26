@@ -1,4 +1,4 @@
-# Build
+﻿# Build
 /build
 /cmake-build-*/
 *.cmake
@@ -47,3 +47,6 @@ Thumbs.db
 # Env local
 .env
 .env.local
+
+
+docs-dev/
