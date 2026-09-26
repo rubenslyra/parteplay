@@ -1,0 +1,37 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 22, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "msvc",
+      "displayName": "Visual Studio 2022 (MSVC) x64",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/msvc",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "JUCE_ROOT": "D:/Program Files/JUCE"
+      }
+    },
+    {
+      "name": "ninja",
+      "displayName": "Ninja (toolchain via CLion)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "JUCE_ROOT": "D:/Program Files/JUCE"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "msvc",
+      "configurePreset": "msvc"
+    },
+    {
+      "name": "ninja",
+      "configurePreset": "ninja"
+    }
+  ]
+}
