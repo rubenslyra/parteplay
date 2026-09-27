@@ -84,7 +84,7 @@ O desenvolvimento observa as seguintes normas aplicáveis ao produto (plugin de 
 |---|---|
 | **ABNT NBR ISO/IEC 12207** | Processos de ciclo de vida de software (desenvolvimento, manutenção, documentação). |
 | **ABNT NBR ISO/IEC 25010** (sucede a 9126) | Modelo de qualidade — mapeamento na Seção 7. |
-| **ISO 16:2005** | Frequência de afinação padrão (A = 440 Hz) — fundamenta o padrão do slider de afinação e a fórmula de centavos. |
+| **ISO 16:1975** | Frequência de afinação padrão (A = 440 Hz) — fundamenta o padrão do slider de afinação e a fórmula de centavos. (A edição vigente é 1975, com confirmação em 2004; o README registra a correção.) |
 | **MIDI 1.0 / RP-001 (MMA & AMEI)** | Formato do arquivo de mapa de tempo exportado (eventos de tempo, assinatura e nome de trilha). |
 | **VST3 SDK (Steinberg)** | Interface do plugin; respeito ao contrato Slave/Master do transport. |
 | **ISO 9241** | Princípios de *ergonomia da interação humano-sistema* para a interface. |
