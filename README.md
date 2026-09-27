@@ -1,154 +1,158 @@
-﻿# 📑 REVALIDAÇÃO E ESTRUTURA COMPLETA DO PROJETO
-**Projeto:** PartePlay / PlayScore
-**Data:** 25/09/2026 | **Status:** Em desenvolvimento — núcleo de sincronia implementado, retomada
-**Ambiente:** MuseScore 4 (VST3) + DAWs compatíveis
-**Pilha:** C++ / JUCE 8.x / Visual Studio 2022
+﻿# PartePlay
+
+Plugin VST3 que reproduz um **áudio de referência sincronizado ao transporte do hospedeiro** (MuseScore 4 ou qualquer DAW) e o **transpõe para o tom do instrumento da partitura** — sem descompasso e sem alteração de velocidade.
+
+**Versão:** 0.1.0 · **Plataforma:** Windows · **Formato:** VST3 · **Stack:** C++ / JUCE 9.0.2 / CMake / Visual Studio 2022
 
 ---
 
-## 🎯 1. REVISÃO DA IDEIA E PROPÓSITO
+## O problema
 
-### O que resolve
-> Músico/arranjador escreve a parte de um instrumento transpositor na partitura, carrega o áudio de referência e **o que se ouve bate exatamente com o que está escrito — sem atraso, sem descompasso, na tonalidade correta para o instrumento**.
+Quem escreve para instrumento transpositor conhece o retrabalho: a partitura está em Si♭, mas o áudio de referência está em Dó. Para o instrumento soar na tonalidade certa é preciso tratar o tom duas vezes — a da partitura e a do instrumento — e qualquer erro de meio-tom escorrega para o conjunto.
 
-### Fluxo do usuário
-```
-1. Abre MuseScore 4 → carrega o plugin
-2. Carrega áudio de referência (WAV/FLAC/MP3)
-3. Seleciona instrumento: Piano(C), Trompete(Si♭), Sax Tenor(Si♭), Sax Alto(Mi♭), Trompa(Fá), etc.
-4. Ajusta afinação de referência (padrão 440Hz — 432–445Hz)
-5. Dá Play → partitura toca SINCRONIZADA + áudio transposto automaticamente
-```
+O PartePlay resolve isso em um ponto só: ele lê o tom do instrumento, aplica a transposição sobre o áudio e o alinha ao relógio do hospedeiro. O músico toca a partitura e ouve o material na tonalidade correta, no tempo correto.
 
-### Diferencial de mercado
-- ✅ Sincronia real via relógio do hospedeiro (não relógio próprio) → ZERO descompasso
-- ✅ Transposição por instrumento + afinação de referência em um só lugar
-- ✅ Feito **para educação e arranjo** — não é efeito genérico
-- ✅ Brasileiro, multilíngue, acessível
+## O que ele faz hoje
 
----
+- **Sincronia real**: a posição do áudio é derivada do relógio do host (`timeInSamples`), não de um relógio próprio. Play, pause, seek, avanço e retrocesso acompanham sem deriva.
+- **Transposição por instrumento**: tabela com Piano, Trombone, Trompete, Sax Tenor, Sax Alto, Trompa e Ajuste Manual, combinando o tom do instrumento, a afinação de referência (A4 432–445 Hz) e a afinação real detectada no arquivo.
+- **Pitch-shift sem mudança de velocidade**: vocoder de fase (FFT 2048 / hop 512) em passagem única, mantendo o comprimento do buffer — por construção a sincronia não se altera.
+- **Análise de tempo**: BPM, assinatura de tempo (3/4 ou 4/4), número de compassos e afinação detectada, com exportação do mapa de tempo em **MIDI 1.0** para importar no MuseScore ou na DAW.
+- **Modo treino**: velocidade de 50–150% e loop de trecho em compassos, alinhado à métrica detectada.
+- **Editor 5:4** com tema escuro, forma de onda, loop visível, tiles de análise e saída estéreo ou mono.
 
-## ⚖️ 2. TRADEOFFS PREVISTOS
+## Tabela de instrumentos
 
-| Decisão | Ganho | Custo / Risco | Mitigação |
-|---|---|---|---|
-| **JUCE + GPLv3** | Compatibilidade total VST3/MuseScore, comunidade grande, código aberto | Se vender → precisa licença comercial (~US$ 400/ano) ou manter código aberto | Modelo híbrido: versão livre GPL + licença comercial fechada para recursos avançados |
-| **Pitch-shifting em tempo real** | Transposição instantânea sem interromper reprodução | Uso de CPU; artefatos sonoros em notas longas | Usar algoritmo Rubber Band (integrável ao JUCE); permitir qualidade/buffer ajustável |
-| **Sincronia via tempo do hospedeiro** | Perfeita, funciona com avanço/retrocesso do MuseScore | Depende da precisão do relógio do hospedeiro | Validar contra múltiplas versões do MuseScore; fallback de tolerância |
-| **Suporte a MP3** | Ampla adoção | Decodificação em tempo real = processamento extra | Decodificar para buffer na memória no carregamento, não em tempo real |
-| **Doação voluntária → modelo comercial** | Lançamento rápido, validação de demanda | Risco de confusão entre "gratuito" e "pago" | Nomes claros: **PlayScore Free** vs **PlayScore Pro**; licenças distintas |
+A convenção é o **menor intervalo assinado** entre o tom escrito (partitura em Dó) e o som real do instrumento:
 
----
+| Instrumento | Tom | Semitons |
+|---|---|---|
+| Piano | Dó | 0 |
+| Trombone | Dó | 0 |
+| Trompete | Si♭ | −2 |
+| Sax Tenor | Si♭ | −2 |
+| Sax Alto | Mi♭ | +3 |
+| Trompa | Fá | +5 |
+| Ajuste Manual | — | livre (−12…+12) |
 
-## 🔄 3. MELHORIAS CONTÍNUAS — ROTEIRO DE EVOLUÇÃO
+O fator aplicado é `2^(semitons/12) × (referência / afinação detectada)`. Razão 1,0 usa o buffer original, sem reprocessamento.
 
-### Fase 1 ✅ Concluído — Base
-- [x] Ambiente: VS2022 + JUCE + MuseScore 4
-- [x] Projeto VST3 criado e compilado
-- [x] Sincronia com tempo do hospedeiro funcional
-- [x] Carregamento WAV/FLAC/MP3
-- [x] Interface mínima + carregador de arquivo
+## Requisitos
 
-### Fase 2 ⏳ Em andamento — Transposição Inteligente
-- [ ] Pitch-shifting com time-stretching independente
-- [ ] Tabela de instrumentos e semitons de transposição
-- [ ] Controle de afinação de referência (432–445Hz)
-- [ ] Teste de validação: tom de referência × partitura × áudio
-- [ ] Tratamento de borda: fim de arquivo, parada/retorno, loop
+- Windows 10/11
+- Visual Studio 2022 (Build Tools com workload *Desktop development with C++*)
+- CMake 3.22 ou superior
+- JUCE 9.0.2 — o caminho fica em `JUCE_ROOT` (padrão no preset: `D:/Program Files/JUCE`)
+- Para uso musical: MuseScore 4 ou DAW com suporte a VST3
 
-### Fase 3 — Interface e Usabilidade
-- [ ] Visualização de forma de onda
-- [ ] Seleção de instrumento em menu amigável
-- [ ] Controles deslizantes de afinação
-- [ ] Indicador de sincronia e status
-- [ ] Suporte multilíngue (PT-BR / EN / ES)
+## Compilação
 
-### Fase 4 — Recursos Avançados (candidatos à versão Pro)
-- [ ] Mapeamento de afinações regionais (viola caipira, cordas características)
-- [ ] Salva/recupera presets por arranjo/partitura
-- [ ] Processamento em lote — transpor arquivos sem abrir o MuseScore
-- [ ] Modo treino: repetição de trecho, ajuste de velocidade sem alterar tom
-- [ ] Análise de tonalidade automática do áudio
+```powershell
+# Configura e compila em Release
+cmake --preset msvc
+cmake --build --preset msvc --config Release
 
-### Fase 5 — Ecossistema
-- [ ] Extensão para DAWs (Além do MuseScore: Reaper, Cubase, Studio One)
-- [ ] Versão LV2 (Linux/Ardour)
-- [ ] Biblioteca de timbres brasileiros como conteúdo complementar
-
----
-
-## 💰 4. PROJETO COMO NEGÓCIO — MODELO MODULAR
-
-### Estrutura de Produto
-| Camada | Nome | Licença | Código | Público |
-|---|---|---|---|---|
-| 🆓 **Free** | PlayScore Free | GPLv3 | Aberto | Estudantes, professores, amadores |
-| 💎 **Pro** | PlayScore Pro | Comercial / Fechado | Código proprietário | Arranjadores profissionais, estúdios, escolas |
-| 🏫 **Empresarial** | PlayScore Edu | Licença anual | Suporte dedicado | Redes de ensino, conservatórios, projetos sociais |
-
-### O que diferencia a versão Pro
-- ✅ Afinações personalizadas e presets salvos
-- ✅ Processamento em lote e modo independente
-- ✅ Sem obrigação de liberação de código
-- ✅ Atualizações prioritárias
-- ✅ Suporte técnico direto
-- ✅ Instalação em múltiplas máquinas
-
-### Fluxo de Receita
-```
-1. Usuário → baixa Free → usa → sente necessidade de recursos avançados
-2. Site → comparação Free × Pro → adquire licença anual/perpétua
-3. Receita → reinvestimento em melhorias + sustentação do projeto
-4. Parte do valor → fundo de versões educacionais subsidiadas
+# Alternativa: Ninja (CLion)
+cmake --preset ninja
+cmake --build --preset ninja
 ```
 
-### Preços sugeridos (estudo inicial)
-- **PlayScore Free**: Gratuito + doação voluntária US$ 3–5
-- **PlayScore Pro**: US$ 29/perpétua ou US$ 12/ano
-- **PlayScore Edu**: US$ 5/máquina/ano (lotes mínimos)
-- **Empresarial**: sob consulta
+Ou use o script, que encadeia configure + build:
 
-### Plataforma de Venda
-- Página própria + **Gumroad** ou **Paddle** → emite licença, entrega download, cuida de impostos
-- Recebimento → Conta Global Banco Inter (USD)
-- Ko-fi mantido para doações voluntárias ao projeto livre
+```powershell
+.\scripts\build.ps1 -Configuration Release
+```
 
-### Estratégia de Código
-- **Free**: repositório público GitHub (GPLv3) — contribuições bem-vindas
-- **Pro**: desenvolvimento em repositório privado Azure DevOps — funcionalidades isoladas
-- **Regra**: tudo que é GPL permanece GPL; Pro agrega módulos separados com licença comercial
+Artefato gerado:
 
----
+```
+build/msvc/PartePlay_artefacts/Release/VST3/PartePlay.vst3
+```
 
-## 📌 5. PLANO DE RETOMADA — PRÓXIMOS PASSOS
+## Instalação
 
-### Imediato (1–2 semanas)
-1. [ ] Confirmar resultado dos seus testes locais — funcionou? onde travou?
-2. [ ] Implementar transposição com Rubber Band Library
-3. [ ] Adicionar tabela de instrumentos e controle de afinação
-4. [ ] Documentar tudo no Wiki do Azure DevOps
+Feche o MuseScore (ou a DAW) antes de instalar — o binário fica travado enquanto o plugin está carregado.
 
-### Curto prazo (1 mês)
-1. [ ] Interface polida e usabilidade
-2. [ ] Versão beta fechada — convidar 5–10 músicos/arranjadores para testar
-3. [ ] Preparar página de lançamento
-4. [ ] Definir licença comercial e fluxo de entrega
+```powershell
+.\scripts\install-vst3.ps1
+```
 
-### Médio prazo (3 meses)
-1. [ ] Lançamento oficial — Free + Pro
-2. [ ] Gravar tutoriais em PT-BR e EN
-3. [ ] Contato com escolas e projetos de educação musical
-4. [ ] Primeiro ciclo de receita → reinvestimento
+O script remove a instalação anterior, copia o bundle para `C:\Program Files\Common Files\VST3\PartePlay.vst3` e confere o **hash SHA-256** do binário instalado contra o do build. Exige execução como administrador.
 
----
+O template de partitura do MuseScore é instalado separadamente:
 
-## ✅ RESUMÃO
-- ✅ O **coração do problema** está resolvido na base: sincronia perfeita
-- ⏳ Falta implementar **transposição inteligente** — próximo passo técnico
-- 💰 Modelo de negócio definido: **Free aberto + Pro fechado** — respeita GPL e gera sustentabilidade
-- 📂 Repositórios separados: Azure (privado/Pro) + GitHub (público/Free)
-- 🚀 Próxima ação: **seu retorno com o feedback dos testes** → implementação da Fase 2
+```powershell
+.\scripts\install-musescore-template.ps1
+```
 
----
+## Uso
 
-Ficou tudo alinhado com o que você imagina? Quer que eu já entre direto no código da **transposição com Rubber Band**, ou prefere primeiro conversarmos sobre o modelo de negócio e licença? 🎵💻
+1. Abra o MuseScore 4 e adicione o PartePlay como efeito.
+2. **Carregar áudio** — WAV, FLAC, OGG ou MP3.
+3. Confira BPM, métrica e compassos exibidos; se quiser, exporte o mapa de tempo em `.mid` e importe no hospedeiro.
+4. Escolha o **instrumento** e ajuste a **afinação de referência** se necessário.
+5. Toque: partitura e áudio juntos, na tonalidade do instrumento.
+6. Para estudo, reduza a **velocidade de treino** e/ou ative o **loop de trecho**.
+
+## Parâmetros
+
+| ID | Faixa / Opções | Padrão |
+|---|---|---|
+| `instrument` | Piano (C) · Trombone (C) · Trompete (B♭) · Sax Tenor (B♭) · Sax Alto (E♭) · Trompa (F) · Ajuste Manual | Piano (C) |
+| `referencePitch` | 432,0 – 445,0 Hz (passo 0,1) | 440,0 |
+| `transpose` | −12 … +12 semitons | 0 |
+| `trainingSpeed` | 0,50 – 1,50 | 1,00 |
+| `loopEnabled` | liga/desliga | false |
+| `loopStart` / `loopEnd` | 1 – 10000 (compasso) | 1 |
+| `muted` | silencia a saída local | false |
+
+Todos os parâmetros são gravados na sessão do hospedeiro e ficam disponíveis para automação.
+
+## Arquitetura
+
+```
+Source/
+  PluginProcessor   — núcleo: parâmetros, sincronia, orquestração da transposição
+  PluginEditor      — editor 5:4 (painéis, LookAndFeel, layout)
+  Theme.h           — tokens visuais e rotinas de pintura
+  FilePlayer        — carregamento, reprodução, loop, picos da forma de onda
+  PitchShifter      — engine de pitch-shift offline (isolada, substituível)
+  TempoAnalyser     — BPM, métrica, compassos e afinação
+  Instrument        — domínio musical: instrumentos e semitons (fonte única)
+  ParameterIds.h    — identificadores de parâmetro (fonte única)
+  MidiMapExporter   — mapa de tempo em MIDI 1.0
+  Text              — i18n e interpolação de texto
+  Waveform.h        — estrutura de picos
+```
+
+Duas decisões estruturais merecem destaque:
+
+- **Buffers por `shared_ptr<const>`**: o áudio original e o transposto são snapshots imutáveis trocados atomicamente. Uma mudança de parâmetro não interrompe a reprodução.
+- **Texto sempre por `Text::from`/`Text::format`**: `juce::String::formatted` converte o formato com `String(const char*)` e, no Windows, usa `_vsnwprintf`, que exige `wchar_t*` em `%s` — a causa raiz dos acentos quebrados. Toda interpolação passa por `Text`.
+
+## Limitações conhecidas
+
+- O vocoder de fase degrada transientes (material percussivo) e pode soar "fantasiado" em notas longas com deslocamentos grandes (±12 semitons).
+- O recálculo do pitch-shift roda na thread de mensagens e pode congelar a interface por um instante (o áudio continua tocando).
+- BPM, métrica e afinação são **heurísticos** e servem de referência de montagem; a verdade é sempre a do hospedeiro.
+- A injeção direta de tempo no host é limitada pela API VST3 (relações Slave/Master) — por isso a exportação do mapa em `.mid`.
+
+## Documentação
+
+A documentação de desenvolvimento vive em [`docs-dev/`](docs-dev/):
+
+| Arquivo | Conteúdo |
+|---|---|
+| [`Funcionalidades-Atuais.md`](docs-dev/Funcionalidades-Atuais.md) | O que o plugin faz hoje, com detalhe técnico por área |
+| [`Especificacao-Tecnica.md`](docs-dev/Especificacao-Tecnica.md) | Especificação integrada e escopo das fases futuras |
+| [`Analise-e-Roadmap.md`](docs-dev/Analise-e-Roadmap.md) | Riscos, decisões e notas de arquitetura |
+| [`Proximos-Passos.md`](docs-dev/Proximos-Passos.md) | Handoff e validações pendentes |
+| [`visual/5x4-camadas/`](docs-dev/visual/5x4-camadas/) | Referência visual em camadas do editor (canvas 2000×1600) |
+
+## Licença
+
+O JUCE 9 é **duplo-licenciado**: [AGPLv3](https://www.gnu.org/licenses/agpl-3.0.html) ou a licença comercial da JUCE. O AGPLv3 é mais restritivo que a GPL — exige disponibilité do código-fonte a quem recebe o binário, o que vale para uso em rede além da distribuição.
+
+Enquanto o projeto não decidir por uma dessas vias, o caminho compatível é: publicar o código-fonte sob AGPLv3 junto do binário, ou adquirir a licença comercial da JUCE para fechar a distribuição. Essa é uma decisão de negócio ainda em aberto.
+
+Feito para músicos e arranjadores · Rubinho Lyra / Software Eng

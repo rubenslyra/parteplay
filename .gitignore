@@ -49,4 +49,7 @@ Thumbs.db
 .env.local
 
 
-docs-dev/
+# Docs de desenvolvimento: versionadas (decisões, roadmap, handoff, referência visual).
+# Ficam de fora apenas as capturas pesadas e duplicatas de assets.
+/docs-dev/visual/screenshots/
+/docs-dev/visual/PartePlay-Icon.png

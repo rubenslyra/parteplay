@@ -22,7 +22,6 @@ juce_add_plugin(PartePlay
     IS_SYNTH FALSE
     IS_MIDI_EFFECT FALSE
     COPY_PLUGIN_AFTER_BUILD FALSE
-    VST3_COPY_DIR "C:/Program Files/Common Files/VST3"
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/PartePlay-Icon.png"
     ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/PartePlay-Icon.png"
 )
