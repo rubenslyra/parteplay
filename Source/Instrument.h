@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include <JuceHeader.h>
+#include <cmath>
 
 // Domínio musical compartilhado entre núcleo, interface e exportação.
 // Fonte única da tabela de instrumentos: nenhum outro módulo (UI, tema, docs)
@@ -23,6 +24,35 @@ namespace Tuning
     constexpr double defaultReferenceHz = 440.0;
     constexpr double minReferenceHz     = 432.0;
     constexpr double maxReferenceHz     = 445.0;
+
+    // Fator de multiplicação de frequência para um deslocamento em semitons.
+    // Positivo sobe o tom, negativo desce — o sinal é o da convenção de
+    // InstrumentTable::semitonesFor e nunca é invertido em nenhum elo da cadeia.
+    inline double ratioForSemitones (int semitones) noexcept
+    {
+        return std::pow (2.0, static_cast<double> (semitones) / 12.0);
+    }
+
+    // Cents entre duas frequências de referência (1200·log2(f2/f1)).
+    inline double centsBetween (double fromHz, double toHz) noexcept
+    {
+        if (fromHz <= 0.0 || toHz <= 0.0)
+            return 0.0;
+
+        return 1200.0 * std::log2 (toHz / fromHz);
+    }
+
+    // Razão total aplicada ao áudio: transposição do instrumento somada à
+    // compensação da afinação de referência em relação à afinação real do
+    // arquivo. Frequência inválida no arquivo é tratada como "sem desvio".
+    inline double playbackRatio (int semitones, double referenceHz, double filePitchHz) noexcept
+    {
+        const double referenceCompensation = (filePitchHz > 0.0)
+            ? static_cast<double> (referenceHz) / filePitchHz
+            : 1.0;
+
+        return ratioForSemitones (semitones) * referenceCompensation;
+    }
 }
 
 namespace InstrumentTable

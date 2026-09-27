@@ -1,6 +1,8 @@
 ﻿param(
     [ValidateSet("Debug", "Release")]
-    [string]$Configuration = "Release"
+    [string]$Configuration = "Release",
+    # Instala sem rodar a suite de testes de dominio.
+    [switch]$SkipTests
 )
 
 $ErrorActionPreference = "Stop"
@@ -26,6 +28,36 @@ $muse = Get-Process -Name "MuseScore*" -ErrorAction SilentlyContinue
 if ($muse)
 {
     throw "Feche o MuseScore antes de instalar (o binario do plugin fica bloqueado)."
+}
+
+# Gate automatizado: direcao da transposicao e encoding sao verificados em codigo,
+# sem depender do ouvido nem do host.
+if (-not $SkipTests)
+{
+    $tests = Get-ChildItem -Path "$root\build\msvc\PartePlayTests_artefacts\$Configuration" `
+                             -Filter "PartePlayTests.exe" -ErrorAction SilentlyContinue
+
+    if ($tests)
+    {
+        Write-Host "> Rodando testes de dominio (gate V1)..."
+        & $tests.FullName
+
+        if ($LASTEXITCODE -ne 0)
+        {
+            throw "Testes de dominio falharam: instalacao cancelada. Use -SkipTests para ignorar."
+        }
+    }
+    else
+    {
+        Write-Warning "PartePlayTests.exe ausente; compilando apenas o alvo de testes."
+        cmake --build "$root\build\msvc" --config $Configuration --target PartePlayTests
+        & "$root\build\msvc\PartePlayTests_artefacts\$Configuration\PartePlayTests.exe"
+
+        if ($LASTEXITCODE -ne 0)
+        {
+            throw "Testes de dominio falharam: instalacao cancelada. Use -SkipTests para ignorar."
+        }
+    }
 }
 
 $destDir   = "C:\Program Files\Common Files\VST3"

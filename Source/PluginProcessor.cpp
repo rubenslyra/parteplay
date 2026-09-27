@@ -80,9 +80,9 @@ double PlayScoreProcessor::computeCurrentPitchRatio (double baseFilePitchHz) con
     if (pitchValue == nullptr)
         return 1.0;
 
-    const double referencePitch = static_cast<double> (*pitchValue);
-    return std::pow (2.0, getCurrentSemitones() / 12.0)
-         * (baseFilePitchHz != 0.0 ? referencePitch / baseFilePitchHz : 1.0);
+    return Tuning::playbackRatio (getCurrentSemitones(),
+                                  static_cast<double> (*pitchValue),
+                                  baseFilePitchHz);
 }
 
 void PlayScoreProcessor::timerCallback()

@@ -51,3 +51,38 @@ if(MSVC)
 endif()
 
 juce_generate_juce_header(PartePlay)
+
+# ------------------------------------------------------------------------------
+# Testes de dominio (sem UI, sem audio thread): travam o gate V1 — direcao e
+# convencao da transposicao — e as invariantes de encoding/i18n.
+# ------------------------------------------------------------------------------
+
+juce_add_console_app(PartePlayTests PRODUCT_NAME "PartePlayTests")
+
+target_sources(PartePlayTests PRIVATE
+    Tests/DomainTests.cpp
+    Source/Instrument.cpp
+    Source/Text.cpp
+)
+
+target_link_libraries(PartePlayTests PRIVATE
+    juce::juce_recommended_config_flags
+    juce::juce_recommended_lto_flags
+    juce::juce_recommended_warning_flags
+    juce::juce_core
+    juce::juce_events
+)
+target_include_directories(PartePlayTests PRIVATE Source)
+target_compile_features(PartePlayTests PRIVATE cxx_std_17)
+target_compile_definitions(PartePlayTests PUBLIC JUCE_STANDALONE_APPLICATION=1)
+
+if(MSVC)
+    target_compile_options(PartePlayTests PRIVATE /utf-8)
+endif()
+
+juce_generate_juce_header(PartePlayTests)
+
+include(CTest)
+
+add_test(NAME domain COMMAND PartePlayTests)
+set_tests_properties(domain PROPERTIES TIMEOUT 120)
