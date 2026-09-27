@@ -3,6 +3,8 @@
 #include <JuceHeader.h>
 
 #include "FilePlayer.h"
+#include "Instrument.h"
+#include "Waveform.h"
 
 class PlayScoreProcessor : public juce::AudioProcessor,
                            private juce::Timer
@@ -37,21 +39,36 @@ public:
     void loadAudioFile (const juce::File& file);
     bool exportTempoMap (const juce::File& file);
 
+    // Estado para a interface. Tudo que toca o player passa por stateLock: a
+    // interface lê da thread de mensagens enquanto o áudio pode estar em fillOutput.
     bool isTransportPlaying() const noexcept;
     juce::int64 getTransportSample() const noexcept;
     double getTransportSampleRate() const noexcept;
     int getActiveSemitones() const noexcept;
     bool hasReachedEndOfFile() const noexcept;
-    juce::String getLoadedFileName() const noexcept;
-    double getAudioBpm() const noexcept;
-    int getBeatsPerBar() const noexcept;
-    double getDetectedTuningHz() const noexcept;
+
+    juce::String getLoadedFileName() const;
+    juce::int64 getFileSizeBytes() const;
+    double getAudioBpm() const;
+    int getBeatsPerBar() const;
+    double getDetectedTuningHz() const;
+    double getDetectedTuningCents() const;
+    double getDurationSeconds() const;
+    double getPlaybackDurationSeconds() const;
+    int getMeasureCount() const;
+    WaveformPtr getWaveformPeaks() const;
+    bool getLoopFractions (double& startFraction, double& endFraction) const;
+
     double getTrainingSpeed() const noexcept;
     bool isLoopEnabled() const noexcept;
     int getLoopStartMeasure() const noexcept;
     int getLoopEndMeasure() const noexcept;
-    double getDurationSeconds() const noexcept;
-    int getMeasureCount() const noexcept;
+    bool isOutputMuted() const noexcept;
+
+    Instrument getCurrentInstrument() const noexcept;
+    int getCurrentInstrumentIndex() const noexcept;
+    int getManualSemitones() const noexcept;
+    double getReferencePitchHz() const noexcept;
 
     juce::AudioProcessorValueTreeState parameters;
 
@@ -63,7 +80,7 @@ private:
     double computeCurrentPitchRatio (double baseFilePitchHz) const;
 
     std::unique_ptr<FilePlayer> player;
-    juce::CriticalSection audioLock;
+    mutable juce::CriticalSection stateLock;
 
     // Controle da transposição (message thread via Timer).
     double committedPitchRatio = 1.0;
@@ -78,6 +95,7 @@ private:
     std::atomic<float>* loopEnabledValue = nullptr;
     std::atomic<float>* loopStartValue = nullptr;
     std::atomic<float>* loopEndValue = nullptr;
+    std::atomic<float>* mutedValue = nullptr;
 
     std::atomic<bool> transportPlaying { false };
     std::atomic<int64_t> transportSample { 0 };

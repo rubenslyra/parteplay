@@ -14,4 +14,7 @@ namespace Parameter
     inline const juce::String loopEnabled    = "loopEnabled";
     inline const juce::String loopStart      = "loopStart";
     inline const juce::String loopEnd        = "loopEnd";
+
+    // Saída local
+    inline const juce::String muted          = "muted";
 }
