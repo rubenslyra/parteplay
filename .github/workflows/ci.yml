@@ -1,0 +1,221 @@
+name: CI
+
+# Gate de merge exigido por agent.md 2.11: nenhum PR entra sem build e teste
+# verdes. A versao nao aparece aqui de proposito - ela mora em um unico lugar,
+# project(PartePlay VERSION x.y.z) no CMakeLists.txt, e o passo de release a le
+# de la.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Versao e dados de release lidos do CMake, que e a fonte unica da verdade.
+  metadata:
+    name: Ler metadados do projeto
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      juce_tag: ${{ steps.read.outputs.juce_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: read
+        # python3 em vez de `grep -oP`: o resultado nao muda entre imagem do
+        # runner, e o mesmo codigo serve as tres plataformas.
+        run: |
+          python3 - <<'PY'
+          import re, sys, pathlib
+
+          text = pathlib.Path("CMakeLists.txt").read_text(encoding="utf-8")
+
+          project = re.search(r"project\(PartePlay\s+VERSION\s+([0-9.]+)", text)
+          juce    = re.search(r'PARTEPLAY_JUCE_VERSION\s+"([0-9.]+)"', text)
+
+          if not project:
+              sys.exit("::error::nao foi possivel ler project(PartePlay VERSION ...) em CMakeLists.txt")
+          if not juce:
+              sys.exit("::error::nao foi possivel ler PARTEPLAY_JUCE_VERSION em CMakeLists.txt")
+
+          version, juce_tag = project.group(1), juce.group(1)
+          print(f"Versao do projeto: {version}")
+          print(f"Versao da JUCE:    {juce_tag}")
+          pathlib.Path("version.env").write_text(f"VERSION={version}\nJUCE_TAG={juce_tag}\n")
+          PY
+          cat version.env >> "$GITHUB_OUTPUT"
+
+  # Falhar cedo e barato: e o unico trabalho que nao depende de JUCE nem de
+  # toolchain nativa. Se o regex da versao quebrar, os tres jobs caros nao rodam.
+  version-single-source:
+    name: Versao em um unico lugar
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Nenhuma versao hardcoded fora do CMake
+        run: |
+          # agent.md 2.x proibe hardcode de versao em texto. As duas unicas
+          # fontes legitimas sao os arquivos do proprio CMakeLists.
+          bad=$(grep -rInE "\b[0-9]+\.[0-9]+\.[0-9]+\b" \
+                 --include='*.cpp' --include='*.h' \
+                 Source/ Tests/ || true)
+          if [ -n "$bad" ]; then
+            echo "::error::versao hardcoded no codigo:"
+            echo "$bad"
+            exit 1
+          fi
+          echo "Nenhuma versao hardcoded em Source/ ou Tests/"
+
+  build:
+    name: ${{ matrix.name }}
+    needs: [ metadata, version-single-source ]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-2022
+            preset: msvc
+            build_type: Release
+          - name: Ubuntu
+            os: ubuntu-24.04
+            preset: linux
+            build_type: Release
+          - name: macOS
+            os: macos-14
+            preset: macos
+            build_type: Release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache da JUCE (checkout grande e imutavel por tag)
+        uses: actions/cache@v4
+        with:
+          path: .juce-deps/JUCE
+          key: juce-${{ runner.os }}-${{ needs.metadata.outputs.juce_tag }}
+
+      - name: Obter JUCE
+        run: |
+          git clone --depth 1 --branch "${{ needs.metadata.outputs.juce_tag }}" \
+            https://github.com/juce-framework/JUCE.git .juce-deps/JUCE
+          echo "JUCE_ROOT=$PWD/.juce-deps/JUCE" >> "$GITHUB_ENV"
+
+      # Linux e macOS nao tem o toolchain de audio do JUCE instalado por
+      # padrao. Sem ALSA o configure do juce_audio_utils falha.
+      - name: Dependencias de audio (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libfreetype6-dev libx11-dev \
+                                 libxinerama-dev libxrandr-dev libxcursor-dev \
+                                 libxcomposite-dev libcurl4-openssl-dev
+
+      - name: Cache de build
+        uses: actions/cache@v4
+        with:
+          path: build/${{ matrix.preset }}
+          key: build-${{ matrix.os }}-${{ matrix.preset }}-${{ github.sha }}
+          restore-keys: build-${{ matrix.os }}-${{ matrix.preset }}-
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        run: cmake --build build/${{ matrix.preset }} --config ${{ matrix.build_type }}
+
+      - name: Testes
+        run: ctest --test-dir build/${{ matrix.preset }} -C ${{ matrix.build_type }} --output-on-failure
+
+      # O .vst3 e um diretorio (bundle) em todas as plataformas, entao compactar o
+      # caminho direto falha e o passo tem de packagear o CONTEUDO do bundle.
+      # Compress-Archive e um cmdlet do PowerShell: nao roda em shell bash, e o
+      # runner do Windows so tem bash sem esse cmdlet. Por isso um passo por SO.
+      - name: Empacotar o VST3 (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bundle = Get-ChildItem "build/${{ matrix.preset }}" -Recurse -Directory -Filter 'PartePlay.vst3' |
+                    Select-Object -First 1
+          if (-not $bundle) {
+            Write-Error "::error::PartePlay.vst3 nao encontrado em build/${{ matrix.preset }}"
+            exit 1
+          }
+          Write-Host "Bundle: $($bundle.FullName)"
+          $out = "${{ matrix.name }}-PartePlay-PartePlay.vst3.zip"
+          Compress-Archive -Path $bundle.FullName -DestinationPath $out -Force
+          Write-Host "Artefato: $out"
+
+      - name: Empacotar o VST3 (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="build/${{ matrix.preset }}"
+          bundle=$(find "$root" -type d -name 'PartePlay.vst3' | head -1)
+          if [ -z "$bundle" ]; then
+            echo "::error::PartePlay.vst3 nao encontrado em $root"
+            exit 1
+          fi
+          echo "Bundle: $bundle"
+          out="${{ matrix.name }}-PartePlay-PartePlay.vst3.zip"
+          (cd "$(dirname "$bundle")" && zip -r "$GITHUB_WORKSPACE/$out" "$(basename "$bundle")")
+          echo "Artefato: $out"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PartePlay-${{ matrix.name }}
+          path: ${{ matrix.name }}-PartePlay-PartePlay.vst3.zip
+          if-no-files-found: error
+
+  # macOS universal (x86_64 + arm64) em job separado: exige as duas arquiteturas
+  # no mesmo runner, o que so o macOS oferece.
+  universal:
+    name: macOS universal
+    needs: [ metadata, version-single-source, build ]
+    if: needs.build.result == 'success'
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Obter JUCE
+        run: |
+          git clone --depth 1 --branch "${{ needs.metadata.outputs.juce_tag }}" \
+            https://github.com/juce-framework/JUCE.git .juce-deps/JUCE
+          echo "JUCE_ROOT=$PWD/.juce-deps/JUCE" >> "$GITHUB_ENV"
+
+      - name: Build universal
+        run: |
+          cmake --preset macos-universal
+          cmake --build build/macos-universal --config Release
+
+      - name: Empacotar
+        run: |
+          set -euo pipefail
+          bundle=$(find build/macos-universal -type d -name 'PartePlay.vst3' | head -1)
+          test -n "$bundle" || { echo "::error::bundle universal nao encontrado"; exit 1; }
+          bin=$(find "$bundle" -name '*.dylib' -o -name '*.so' | head -1)
+          test -n "$bin" || { echo "::error::binario do bundle nao encontrado"; exit 1; }
+          lipo_archs=$(lipo -archs "$bin")
+          echo "arquiteturas: $lipo_archs"
+          case "$lipo_archs" in
+            *x86_64*arm64*|*arm64*x86_64*) ;;
+            *) echo "::error::bundle nao e universal: $lipo_archs"; exit 1; ;;
+          esac
+          out="macOS-universal-PartePlay-PartePlay.vst3.zip"
+          (cd "$(dirname "$bundle")" && zip -r "$GITHUB_WORKSPACE/$out" "$(basename "$bundle")")
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PartePlay-macOS-universal
+          path: macOS-universal-PartePlay-PartePlay.vst3.zip
+          if-no-files-found: error
