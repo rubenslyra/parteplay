@@ -1,7 +1,7 @@
 ﻿# PartePlay
 
 [![Status](https://img.shields.io/badge/status-in%20development-c94f4d)](CHANGELOG.md)
-[![Version](https://img.shields.io/badge/version-0.1.0-blue)](CMakeLists.txt)
+[![Version](https://img.shields.io/badge/version-0.2.0-blue)](CMakeLists.txt)
 [![Build matrix](https://img.shields.io/badge/build-Windows%20%7C%20Linux%20%7C%20macOS%20universal-0078d4?logo=github)](https://github.com/rubenslyra/parteplay/actions/workflows/ci.yml)
 [![Format](https://img.shields.io/badge/format-VST3-ff5722)](Source/PluginProcessor.cpp)
 [![Host](https://img.shields.io/badge/host-MuseScore%204%20%2F%20DAW-8a2be2)](Source/PluginProcessor.cpp)
@@ -19,7 +19,7 @@ practice along with the real performance instead of a metronome. It works with M
 DAW, supports **training speed and bar-based looping**, computes a **local audio fingerprint**
 (Chromaprint/AcoustID-compatible), and is **fully localized** in pt-BR, en-GB, en-US and es-ES.
 
-**Version:** 0.1.0 · **Platform:** Windows 10/11 (Linux and macOS via CI presets) · **Format:** VST3 · **Stack:** C++17 / JUCE 9.0.2 / CMake
+**Version:** 0.2.0 · **Platform:** Windows 10/11, Ubuntu, macOS (CI-verified build matrix) · **Format:** VST3 · **Stack:** C++17 / JUCE 9.0.2 / CMake
 
 ![alt text](PartePlay-Icon.png)
 
@@ -57,7 +57,7 @@ is limited to compensating the tuning reference against the tuning detected in t
 
 The plugin fingerprints the loaded file **fully offline** (Chromaprint algorithm, 1.6.1, statically
 linked) and shows the result state in the UI. Recording submissions and online matching are
-deliberately **not** enabled in v0.1.0: it is a standalone product decision, not a technical
+deliberately **not** enabled in this release: it is a standalone product decision, not a technical
 limitation. If and when they land, the AcoustID application key will come from the environment —
 never from the binary.
 

@@ -6,6 +6,9 @@ Todas as mudanças relevantes do PartePlay. O formato segue
 
 ## [Não publicado]
 
+Próxima versão: **0.2.0** (a 0.1.0 já foi distribuída; o número mora só em
+`project(PartePlay VERSION x.y.z)`, no `CMakeLists.txt`).
+
 ### Adicionado
 
 - **Identificação offline por impressão digital** — o plugin calcula uma impressão
@@ -73,7 +76,8 @@ Todas as mudanças relevantes do PartePlay. O formato segue
 
 ## [0.1.0] — 2026-09-03
 
-Primeira versão pública.
+Primeira versão pública. (O que mudou depois dela está em [Não publicado], inclusive a
+remoção da transposição por instrumento e a troca do i18n de três idiomas para quatro.)
 
 ### Adicionado
 

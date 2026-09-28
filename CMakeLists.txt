@@ -2,10 +2,10 @@
 
 # Versao do projeto. Este e o UNICO lugar onde a versao mora: badges, notas de
 # release e o formulario do AcoustID derivam daqui (regra de reconciliacao).
-project(PartePlay VERSION 0.1.0 LANGUAGES C CXX)
+project(PartePlay VERSION 0.2.0 LANGUAGES C CXX)
 
 # Versao da JUCE usada na build. Fato de DEPENDENCIA, e nao derivavel da versao
-# do projeto: a 0.1.0 do PartePlay nao tem relacao com a 9.0.2 da JUCE. A CI le
+# do projeto: a versao do PartePlay nao tem relacao com a 9.0.2 da JUCE. A CI le
 # este numero para clonar a tag certa, entao ele mora aqui e em nenhum outro
 # lugar. (Um teste local pegou o erro: derivar major.minor do projeto produzia
 # a tag "0.1.0", que nao existe no repositorio da JUCE.)
@@ -122,7 +122,7 @@ unset(FFT_LIB                  CACHE)
 unset(KISSFFT_ROOT             CACHE)
 
 juce_add_plugin(PartePlay
-    VERSION "0.1.0"
+    VERSION "0.2.0"
     COMPANY_NAME "PartePlay"
     PRODUCT_NAME "PartePlay"
     PLUGIN_NAME "PartePlay"
