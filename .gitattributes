@@ -1,0 +1,19 @@
+﻿# Normalizacao de fim de linha: LF no repositorio, CRLF no checkout do Windows.
+# O padrao do repositorio e LF (ver .editorconfig); isso mantem o binario limpo
+# de diffs que so mexem em CRLF<->LF.
+
+* text=auto eol=lf
+
+# Binarios: nunca tocar.
+*.png      binary
+*.ico      binary
+*.icns     binary
+*.vst3     binary
+*.exe      binary
+*.dll      binary
+*.lib      binary
+*.obj      binary
+*.pdb      binary
+
+# O texto da licenca e verbatim do FSF, com espacos significativos.
+LICENSE    -text

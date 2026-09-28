@@ -1,4 +1,4 @@
-﻿# Instala o template de partitura do PartePlay no MuseScore.
+# Instala o template de partitura do PartePlay no MuseScore.
 # Copia 'musescore/templates/PartePlay/PartePlay - Arranjo.mscx' para:
 #   1) o diretório de templates do usuário do MuseScore (sem admin), se existir;
 #   2) a instalação do MuseScore (Portable/Program Files), subcategoria 01-General (admin).

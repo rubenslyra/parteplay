@@ -1,4 +1,4 @@
-﻿# Template de Partitura — MuseScore (PartePlay)
+# Template de Partitura — MuseScore (PartePlay)
 
 Este diretório contém o **template inicial de partitura** para o fluxo PartePlay:
 

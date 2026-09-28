@@ -49,7 +49,13 @@ Thumbs.db
 .env.local
 
 
-# Docs de desenvolvimento: versionadas (decisões, roadmap, handoff, referência visual).
-# Ficam de fora apenas as capturas pesadas e duplicatas de assets.
-/docs-dev/visual/screenshots/
-/docs-dev/visual/PartePlay-Icon.png
+# Docs de desenvolvimento: removidos do repositório público (docs-dev) em
+# 2026-09-28; o backup local vive fora do repo.
+secrets
+
+# Documentos internos de engenharia. NUNCA versionados (Bloco 0.1 da
+# constitut): contem a lista de fraquezas e o historico de erros, que e material
+# de trabalho interno, nao documentacao do produto. Se algo de lá precisar sair,
+# existe a versao publica sanitizada em CONTRIBUTING.md / ARCHITECTURE.md.
+agent.md
+*.internal.md

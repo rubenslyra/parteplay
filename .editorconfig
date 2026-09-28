@@ -1,11 +1,20 @@
-root = true
+﻿root = true
 
 [*]
 charset = utf-8-bom
-end_of_line = crlf
+end_of_line = lf
 insert_final_newline = true
 trim_trailing_whitespace = true
 
+# Binários: nada a normalizar.
 [*.png]
 charset = unset
 end_of_line = unset
+
+# O texto da licença vem do FSF verbatim; não reescrever.
+[LICENSE]
+trim_trailing_whitespace = false
+
+# O template do MuseScore é reescrito pelo próprio MuseScore, que salva sem BOM.
+[musescore/**/*.mscx]
+charset = unset
