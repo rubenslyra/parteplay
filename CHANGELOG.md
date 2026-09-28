@@ -51,6 +51,25 @@ Todas as mudanças relevantes do PartePlay. O formato segue
   lock.
 - **`Format` do destino do template de PR** — `ctest --preset msvc` substitui o
   caminho direto para o binário, e o checklist exige DCO e a reconcilição da versão.
+- **CI verde nas três plataformas** — depois de cinco rodadas de correção, o
+  workflow está de fato verde em Windows, Ubuntu 24.04 e macOS 14, com o bundle
+  universal x86_64 + arm64 verificado por `lipo` (antes o check era `|| true`,
+  ou seja, não verificava nada):
+  - `Obter JUCE` roda com `shell: bash`; no runner do Windows o PowerShell
+    transformava a continuação de linha em argumento e o clone morria.
+  - O `JUCE_ROOT` exportado pelo CI chegava corrompido ao CMake no Windows
+    (`$GITHUB_ENV` com barras invertidas redirecionado em bash); os dois lados
+    passam por `cygpath`.
+  - `JUCE_ROOT` no CMake passa a ter precedência: variável de ambiente, depois
+    cache, e só então o default da máquina — que antes vencia sempre no Windows
+    e mascarava o valor real.
+  - O bootstrap do `juceaide` roda num CMake recursivo que não herda os include
+    dirs do projeto; no Linux, o `CPLUS_INCLUDE_PATH` é derivado do
+    `pkg-config` do próprio `freetype2` para ele.
+  - O Chromaprint é compilado com `-fPIC` (escopo do próprio subdiretório), sem
+    o que a biblioteca estática não entra no `.so` do VST3.
+  - O binário do bundle VST3 de macOS não tem extensão: a asserção de
+    arquitetura procurava `*.dylib` e falhava num build que tinha dado certo.
 
 ## [0.1.0] — 2026-09-03
 

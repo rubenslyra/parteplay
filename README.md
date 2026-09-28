@@ -2,7 +2,7 @@
 
 [![Status](https://img.shields.io/badge/status-in%20development-c94f4d)](CHANGELOG.md)
 [![Version](https://img.shields.io/badge/version-0.1.0-blue)](CMakeLists.txt)
-[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4?logo=windows)](https://github.com/rubenslyra/parteplay/actions)
+[![Build matrix](https://img.shields.io/badge/build-Windows%20%7C%20Linux%20%7C%20macOS%20universal-0078d4?logo=github)](https://github.com/rubenslyra/parteplay/actions/workflows/ci.yml)
 [![Format](https://img.shields.io/badge/format-VST3-ff5722)](Source/PluginProcessor.cpp)
 [![Host](https://img.shields.io/badge/host-MuseScore%204%20%2F%20DAW-8a2be2)](Source/PluginProcessor.cpp)
 [![Audio](https://img.shields.io/badge/audio-WAV%20%7C%20FLAC%20%7C%20OGG%20%7C%20MP3-4c9a2c)](Source/FilePlayer.cpp)
@@ -20,6 +20,8 @@ DAW, supports **training speed and bar-based looping**, computes a **local audio
 (Chromaprint/AcoustID-compatible), and is **fully localized** in pt-BR, en-GB, en-US and es-ES.
 
 **Version:** 0.1.0 · **Platform:** Windows 10/11 (Linux and macOS via CI presets) · **Format:** VST3 · **Stack:** C++17 / JUCE 9.0.2 / CMake
+
+![alt text](PartePlay-Icon.png)
 
 ---
 
@@ -61,10 +63,13 @@ never from the binary.
 
 ## Requirements
 
-- Windows 10/11 (Linux and macOS are configured through CMake presets and the CI matrix)
-- Visual Studio 2022 Build Tools (workload *Desktop development with C++*)
+- Windows 10/11, Ubuntu 24.04 or macOS 14+ (CI builds and tests all three, and
+  produces a universal x86_64 + arm64 macOS bundle)
+- Windows: Visual Studio 2022 Build Tools (workload *Desktop development with C++*);
+  Linux/macOS: a C++17 toolchain plus the JUCE system packages
 - CMake 3.22 or newer
-- JUCE 9.0.2 — path via the `JUCE_ROOT` cache variable (default in the preset: `D:/Program Files/JUCE`)
+- JUCE 9.0.2 — path via the `JUCE_ROOT` cache variable (default on Windows:
+  `D:/Program Files/JUCE`; anywhere else it must be set, the build says so)
 - For musical use: MuseScore 4 or any VST3-capable DAW
 
 ## Build
@@ -100,18 +105,21 @@ ctest --preset msvc
 **313 checks, 0 failures.** The suite is organized so that musical correctness is enforced by code,
 not by ear:
 
-| Group | What it locks |
-|---|---|
-| Tuning | `Tuning::playbackRatio`, reference compensation (a 432 Hz file at a 440 Hz reference is ≈ +31.8 cents) and `NoteName` with octaves |
-| Text encoding & i18n | `Text::from`/`Text::format` round-trips UTF-8 without double encoding; BCP 47 culture codes; `Text::number` decimal separators per locale |
-| Song sheet strings | Every UI string key resolves to content in all four locales; en-GB vs en-US spelling (`analysing`/`cancelled` vs `analyzing`/`canceled`) and es-ES accents |
-| Fingerprint | Chromaprint compute, stereo handling, rejections (empty / too short / unsupported formats), cancellation and async worker race rules |
-| Player publication | The audio buffer swap is lock-free (atomic `shared_ptr` publication); the race test fails if a lock is reintroduced |
+| Group                | What it locks                                                                                                                                              |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tuning               | `Tuning::playbackRatio`, reference compensation (a 432 Hz file at a 440 Hz reference is ≈ +31.8 cents) and `NoteName` with octaves                         |
+| Text encoding & i18n | `Text::from`/`Text::format` round-trips UTF-8 without double encoding; BCP 47 culture codes; `Text::number` decimal separators per locale                  |
+| Song sheet strings   | Every UI string key resolves to content in all four locales; en-GB vs en-US spelling (`analysing`/`cancelled` vs `analyzing`/`canceled`) and es-ES accents |
+| Fingerprint          | Chromaprint compute, stereo handling, rejections (empty / too short / unsupported formats), cancellation and async worker race rules                       |
+| Player publication   | The audio buffer swap is lock-free (atomic `shared_ptr` publication); the race test fails if a lock is reintroduced                                        |
 
 `install-vst3.ps1` runs this suite before installing and aborts on any failure
 (`-SkipTests` to ignore).
 
 ## Install
+
+The install scripts are PowerShell, so this section is Windows-only — the build
+itself is cross-platform (see Requirements).
 
 Close MuseScore (or the DAW) before installing — the binary is locked while the plugin is loaded.
 
@@ -141,13 +149,13 @@ The MuseScore notation template is installed separately:
 
 ## Parameters
 
-| ID | Range / options | Default |
-|---|---|---|
-| `referencePitch` | 432.0 – 445.0 Hz (step 0.1) | 440.0 |
-| `trainingSpeed` | 0.50 – 1.50 (step 0.01) | 1.00 |
-| `loopEnabled` | on / off | false |
-| `loopStart` / `loopEnd` | 1 – 10000 (bar) | 1 |
-| `muted` | silences local output | false |
+| ID                      | Range / options             | Default |
+| ----------------------- | --------------------------- | ------- |
+| `referencePitch`        | 432.0 – 445.0 Hz (step 0.1) | 440.0   |
+| `trainingSpeed`         | 0.50 – 1.50 (step 0.01)     | 1.00    |
+| `loopEnabled`           | on / off                    | false   |
+| `loopStart` / `loopEnd` | 1 – 10000 (bar)             | 1       |
+| `muted`                 | silences local output       | false   |
 
 All parameters are persisted in the host session and available for automation.
 
@@ -220,14 +228,14 @@ licence; whether PartePlay ships a commercial edition is an open product decisio
 
 **Rubens Lyra** — architecture and development of PartePlay.
 
-| Area | What it involved |
-|---|---|
-| Software architecture | Centralized music-domain model (`Tuning`, `ParameterIds`), replaceable engine seams, thread-safety decisions, feasibility analysis against real VST3 constraints |
-| C++ / JUCE / audio DSP | Phase vocoder, host-synced player, tempo analyser, offline fingerprint worker, JUCE editor |
-| VST3 / MuseScore integration | SDK contract, Slave/Master transport role, MIDI 1.0 time-map export, MuseScore 4 notation template |
-| UI/UX & design system | 5:4 editor redesign, token system (`Source/Theme.h`), panels, visual identity |
-| Product, roadmap & docs | Scope and prioritization, internationalization, handoff, this README |
-| DevOps / build / release | CMake presets, install scripts with hash verification, CTest suite, multi-platform CI |
+| Area                         | What it involved                                                                                                                                                 |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Software architecture        | Centralized music-domain model (`Tuning`, `ParameterIds`), replaceable engine seams, thread-safety decisions, feasibility analysis against real VST3 constraints |
+| C++ / JUCE / audio DSP       | Phase vocoder, host-synced player, tempo analyser, offline fingerprint worker, JUCE editor                                                                       |
+| VST3 / MuseScore integration | SDK contract, Slave/Master transport role, MIDI 1.0 time-map export, MuseScore 4 notation template                                                               |
+| UI/UX & design system        | 5:4 editor redesign, token system (`Source/Theme.h`), panels, visual identity                                                                                    |
+| Product, roadmap & docs      | Scope and prioritization, internationalization, handoff, this README                                                                                             |
+| DevOps / build / release     | CMake presets, install scripts with hash verification, CTest suite, multi-platform CI                                                                            |
 
 - GitHub: [github.com/rubenslyra/parteplay](https://github.com/rubenslyra/parteplay)
 - LinkedIn: [linkedin.com/in/rubenslyra](https://www.linkedin.com/in/rubenslyra)
@@ -238,22 +246,22 @@ licence; whether PartePlay ships a commercial edition is an open product decisio
 
 ### Standards in scope
 
-| Standard | Scope in the project |
-|---|---|
-| **ISO 16:1975** — *Acoustics — Standard tuning frequency (440 Hz)* | `Tuning::defaultReferenceHz = 440.0`, `Tuning::centsBetween` |
-| **MIDI 1.0 — RP-001** (MMA / AMEI) | The exported time-map file format in `MidiMapExporter` |
-| **VST3 SDK** (Steinberg) | Plugin interface, transport contract, Slave/Master role |
-| **C++17** (ISO/IEC 14882:2017) | `cxx_std_17`, no extensions |
+| Standard                                                           | Scope in the project                                         |
+| ------------------------------------------------------------------ | ------------------------------------------------------------ |
+| **ISO 16:1975** — _Acoustics — Standard tuning frequency (440 Hz)_ | `Tuning::defaultReferenceHz = 440.0`, `Tuning::centsBetween` |
+| **MIDI 1.0 — RP-001** (MMA / AMEI)                                 | The exported time-map file format in `MidiMapExporter`       |
+| **VST3 SDK** (Steinberg)                                           | Plugin interface, transport contract, Slave/Master role      |
+| **C++17** (ISO/IEC 14882:2017)                                     | `cxx_std_17`, no extensions                                  |
 
 ### Technical bibliography
 
-- **JUCE 9.0.2** — *The JUCE Framework*. [Docs](https://docs.juce.com/master/) and
+- **JUCE 9.0.2** — _The JUCE Framework_. [Docs](https://docs.juce.com/master/) and
   [licensing](https://juce.com/legal/juce-9-licence/).
 - **Laroche, J.; Dolson, M.** — "Improved phase vocoder time-scale modification of audio".
-  *IEEE Trans. Speech and Audio Processing*, v. 7, n. 3, 1999 — phase propagation in `PitchShifter`.
-- **Oppenheim, A. V.; Schafer, R. W.** — *Discrete-Time Signal Processing*. 3rd ed. Pearson,
+  _IEEE Trans. Speech and Audio Processing_, v. 7, n. 3, 1999 — phase propagation in `PitchShifter`.
+- **Oppenheim, A. V.; Schafer, R. W.** — _Discrete-Time Signal Processing_. 3rd ed. Pearson,
   2010 — ch. 7–9: DFT, FFT, overlap-add block analysis.
-- **Zwicker, E.; Fastl, H.** — *Psychoacoustics: Facts and Models*. 3rd ed. Springer, 2013 — the
+- **Zwicker, E.; Fastl, H.** — _Psychoacoustics: Facts and Models_. 3rd ed. Springer, 2013 — the
   audibility range the pitch detector scans.
 
 ### Licensing
