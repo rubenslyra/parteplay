@@ -1,263 +1,264 @@
 ﻿# PartePlay
 
-![Status](https://img.shields.io/badge/status-em%20desenvolvimento-c94f4d)
-![Versão](https://img.shields.io/badge/vers%C3%A3o-0.1.0-blue)
-![Plataforma](https://img.shields.io/badge/plataforma-Windows%2010%2F11-0078d4?logo=windows)
-![Formato](https://img.shields.io/badge/formato-VST3-ff5722)
-![Host](https://img.shields.io/badge/host-MuseScore%204%20%2F%20DAW-8a2be2)
-![JUCE](https://img.shields.io/badge/JUCE-9.0.2-3d2b8a?logo=juce)
-![Linguagem](https://img.shields.io/badge/C%2B%2B-C%2B%2B17-00599c?logo=c%2B%2B&logoColor=white)
-![CMake](https://img.shields.io/badge/CMake-3.22%2B-064f8c?logo=cmake&logoColor=white)
-![Testes](https://img.shields.io/badge/testes-110%20verifica%C3%A7%C3%B5es%20%E2%9C%85-4c9a2c)
-![Docs](https://img.shields.io/badge/docs-dev%2F-blue)
-![Codificação](https://img.shields.io/badge/encoding-UTF--8%20BOM-0f7cbf)
+[![Status](https://img.shields.io/badge/status-in%20development-c94f4d)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.0-blue)](CMakeLists.txt)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4?logo=windows)](https://github.com/rubenslyra/parteplay/actions)
+[![Format](https://img.shields.io/badge/format-VST3-ff5722)](Source/PluginProcessor.cpp)
+[![Host](https://img.shields.io/badge/host-MuseScore%204%20%2F%20DAW-8a2be2)](Source/PluginProcessor.cpp)
+[![Audio](https://img.shields.io/badge/audio-WAV%20%7C%20FLAC%20%7C%20OGG%20%7C%20MP3-4c9a2c)](Source/FilePlayer.cpp)
+[![JUCE](https://img.shields.io/badge/JUCE-9.0.2-3d2b8a?logo=juce)](CMakeLists.txt)
+[![Language](https://img.shields.io/badge/C%2B%2B-C%2B%2B17-00599c?logo=c%2B%2B&logoColor=white)](CMakeLists.txt)
+[![CMake](https://img.shields.io/badge/CMake-3.22%2B-064f8c?logo=cmake&logoColor=white)](CMakePresets.json)
+[![Tests](https://img.shields.io/badge/tests-313%20checks%20%E2%9C%85-4c9a2c)](Tests/DomainTests.cpp)
+[![i18n](https://img.shields.io/badge/i18n-pt--BR%20%7C%20en--GB%20%7C%20en--US%20%7C%20es--ES-0f7cbf)](Source/Text.cpp)
+[![CI](https://github.com/rubenslyra/parteplay/actions/workflows/ci.yml/badge.svg)](https://github.com/rubenslyra/parteplay/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-AGPL--3.0-lightgrey)](LICENSE)
 
-Plugin VST3 que reproduz um **áudio de referência sincronizado ao transporte do hospedeiro** (MuseScore 4 ou qualquer DAW) e o **transpõe para o tom do instrumento da partitura** — sem descompasso e sem alteração de velocidade.
+A VST3 plugin that plays a **reference audio track in sync with the host transport** — so you
+practice along with the real performance instead of a metronome. It works with MuseScore 4 or any
+DAW, supports **training speed and bar-based looping**, computes a **local audio fingerprint**
+(Chromaprint/AcoustID-compatible), and is **fully localized** in pt-BR, en-GB, en-US and es-ES.
 
-**Versão:** 0.1.0 · **Plataforma:** Windows · **Formato:** VST3 · **Stack:** C++17 / JUCE 9.0.2 / CMake / Visual Studio 2022
+**Version:** 0.1.0 · **Platform:** Windows 10/11 (Linux and macOS via CI presets) · **Format:** VST3 · **Stack:** C++17 / JUCE 9.0.2 / CMake
 
 ---
 
-## O problema
+## The problem
 
-Quem escreve para instrumento transpositor conhece o retrabalho: a partitura está em Si♭, mas o áudio de referência está em Dó. Para o instrumento soar na tonalidade certa é preciso tratar o tom duas vezes — a da partitura e a do instrumento — e qualquer erro de meio-tom escorrega para o conjunto.
+When you study a piece you usually have a reference recording — but the performance moves forward
+while you stop and restart. Re-aligning "a little ahead of the solo" is fragile and wastes practice
+time.
 
-O PartePlay resolve isso em um ponto só: ele lê o tom do instrumento, aplica a transposição sobre o áudio e o alinha ao relógio do hospedeiro. O músico toca a partitura e ouve o material na tonalidade correta, no tempo correto.
+PartePlay treats the reference audio as a **score follower that obeys the host clock**: the audio
+position is derived from the transport (`timeInSamples`), so play, pause, seek, fast-forward and
+rewind never drift from the score. It does **not** transpose or re-pitch the track — pitch handling
+is limited to compensating the tuning reference against the tuning detected in the file.
 
-## O que ele faz hoje
+## What it does today
 
-- **Sincronia real**: a posição do áudio é derivada do relógio do host (`timeInSamples`), não de um relógio próprio. Play, pause, seek, avanço e retrocesso acompanham sem deriva.
-- **Transposição por instrumento**: tabela com Piano, Trombone, Trompete, Sax Tenor, Sax Alto, Trompa e Ajuste Manual, combinando o tom do instrumento, a afinação de referência (A4 432–445 Hz) e a afinação real detectada no arquivo.
-- **Pitch-shift sem mudança de velocidade**: vocoder de fase (FFT 2048 / hop 512) em passagem única, mantendo o comprimento do buffer — por construção a sincronia não se altera.
-- **Análise de tempo**: BPM, assinatura de tempo (3/4 ou 4/4), número de compassos e afinação detectada, com exportação do mapa de tempo em **MIDI 1.0** para importar no MuseScore ou na DAW.
-- **Modo treino**: velocidade de 50–150% e loop de trecho em compassos, alinhado à métrica detectada.
-- **Editor 5:4** com tema escuro, forma de onda, loop visível, tiles de análise e saída estéreo ou mono.
+- **Host-locked playback** — the audio follows the DAW/notation transport exactly; there is no
+  internal clock to drift.
+- **Tuning reference** — the plugin detects the tuning of the source file (Hz) and lets you set the
+  reference (432–445 Hz, default A4 = 440 Hz). The playback ratio compensates the difference; it
+  uses the original buffer when the ratio is exactly 1.0.
+- **Training mode** — speed from 50% to 150% and a bar-based loop aligned to the detected meter,
+  keeping playback in sync.
+- **Tempo analysis** — detected BPM, meter (3/4 or 4/4), bar count and tuning, with **MIDI 1.0**
+  time-map export for MuseScore and DAWs.
+- **Offline fingerprint** — computes an AcoustID-compatible fingerprint locally (no cloud, no key
+  embedded in the binary). Online lookup is intentionally disabled for now; see
+  ["Identification"](#identification) below.
+- **5:4 editor** — dark theme, waveform with visible loop markers, analysis tiles, stereo/mono
+  output, and four locales selectable in the UI without restarting the host.
 
-## Tabela de instrumentos
+## Identification
 
-A convenção é o **menor intervalo assinado** entre o tom escrito (partitura em Dó) e o som real do instrumento:
+The plugin fingerprints the loaded file **fully offline** (Chromaprint algorithm, 1.6.1, statically
+linked) and shows the result state in the UI. Recording submissions and online matching are
+deliberately **not** enabled in v0.1.0: it is a standalone product decision, not a technical
+limitation. If and when they land, the AcoustID application key will come from the environment —
+never from the binary.
 
-| Instrumento | Tom | Semitons |
-|---|---|---|
-| Piano | Dó | 0 |
-| Trombone | Dó | 0 |
-| Trompete | Si♭ | −2 |
-| Sax Tenor | Si♭ | −2 |
-| Sax Alto | Mi♭ | +3 |
-| Trompa | Fá | +5 |
-| Ajuste Manual | — | livre (−12…+12) |
+## Requirements
 
-O fator aplicado é `2^(semitons/12) × (referência / afinação detectada)`. Razão 1,0 usa o buffer original, sem reprocessamento.
+- Windows 10/11 (Linux and macOS are configured through CMake presets and the CI matrix)
+- Visual Studio 2022 Build Tools (workload *Desktop development with C++*)
+- CMake 3.22 or newer
+- JUCE 9.0.2 — path via the `JUCE_ROOT` cache variable (default in the preset: `D:/Program Files/JUCE`)
+- For musical use: MuseScore 4 or any VST3-capable DAW
 
-## Requisitos
-
-- Windows 10/11
-- Visual Studio 2022 (Build Tools com workload *Desktop development with C++*)
-- CMake 3.22 ou superior
-- JUCE 9.0.2 — o caminho fica em `JUCE_ROOT` (padrão no preset: `D:/Program Files/JUCE`)
-- Para uso musical: MuseScore 4 ou DAW com suporte a VST3
-
-## Compilação
+## Build
 
 ```powershell
-# Configura e compila em Release
 cmake --preset msvc
 cmake --build --preset msvc --config Release
-
-# Alternativa: Ninja (CLion)
-cmake --preset ninja
-cmake --build --preset ninja
 ```
 
-Ou use o script, que encadeia configure + build:
+Or the script (configure + build in one step):
 
 ```powershell
 .\scripts\build.ps1 -Configuration Release
 ```
 
-Artefato gerado:
+Artifact:
 
 ```
 build/msvc/PartePlay_artefacts/Release/VST3/PartePlay.vst3
 ```
 
-## Testes
+The presets also cover `ninja`, `linux`, `macos` and `macos-universal` (x86_64 + arm64).
 
-O domínio musical e a camada de texto têm suíte automatizada (sem UI e sem audio thread), wired no CTest:
+## Tests
+
+The domain and text layers have an automated suite (no UI, no audio thread) wired into CTest:
 
 ```powershell
 cmake --build --preset msvc --config Release --target PartePlayTests
-ctest --test-dir build\msvc -C Release --output-on-failure
+ctest --preset msvc
 ```
 
-São 110 verificações em cinco grupos, e o primeiro existe justamente para travar a correção musical sem depender do ouvido:
+**313 checks, 0 failures.** The suite is organized so that musical correctness is enforced by code,
+not by ear:
 
-| Grupo | O que fixa |
+| Group | What it locks |
 |---|---|
-| **V1 — Tabela de instrumentos** | Piano/Trombone 0 · Trompete/Sax Tenor −2 · Sax Alto +3 · Trompa **+5** · Manual 0. Nenhum instrumento pode voltar a −5, que soaria Sol em vez de Fá. Ida e volta de índice. |
-| **V1 — Direção do ratio** | `2^(semitons/12)` com sinal correto: +5 sobe, −2 desce, 5 e −5 são inversos exatos. Aritmética em cents (uma oitava = 1200 cents). |
-| **V1 — Compensação de referência** | Arquivo em A=432 com referência 440 corrige ≈ +31,8 cents; afinação inválida não explode o ratio. |
-| **V2 — Encoding e i18n** | `Text::from` devolve UTF-8 intacto, `Text::format` interpola com acentos, pt-BR devolve a chave, en/es traduzem, e nenhuma saída carrega sequência duplamente codificada. |
-| **V2 — Nomes exibidos** | Os 7 nomes de instrumento são distintos e todos têm símbolo, tonalidade e semitons com sinal. |
+| Tuning | `Tuning::playbackRatio`, reference compensation (a 432 Hz file at a 440 Hz reference is ≈ +31.8 cents) and `NoteName` with octaves |
+| Text encoding & i18n | `Text::from`/`Text::format` round-trips UTF-8 without double encoding; BCP 47 culture codes; `Text::number` decimal separators per locale |
+| Song sheet strings | Every UI string key resolves to content in all four locales; en-GB vs en-US spelling (`analysing`/`cancelled` vs `analyzing`/`canceled`) and es-ES accents |
+| Fingerprint | Chromaprint compute, stereo handling, rejections (empty / too short / unsupported formats), cancellation and async worker race rules |
+| Player publication | The audio buffer swap is lock-free (atomic `shared_ptr` publication); the race test fails if a lock is reintroduced |
 
-O `install-vst3.ps1` roda essa suíte antes de instalar e cancela se algo falhar (`-SkipTests` ignora).
+`install-vst3.ps1` runs this suite before installing and aborts on any failure
+(`-SkipTests` to ignore).
 
-## Instalação
+## Install
 
-Feche o MuseScore (ou a DAW) antes de instalar — o binário fica travado enquanto o plugin está carregado.
+Close MuseScore (or the DAW) before installing — the binary is locked while the plugin is loaded.
 
 ```powershell
 .\scripts\install-vst3.ps1
 ```
 
-O script roda os testes de domínio, remove a instalação anterior, copia o bundle para `C:\Program Files\Common Files\VST3\PartePlay.vst3` e confere o **hash SHA-256** do binário instalado contra o do build. Exige execução como administrador.
+The script runs the domain tests, removes the previous install, copies the bundle to `C:\Program
+Files\Common Files\VST3\PartePlay.vst3` and verifies the **SHA-256** of the installed binary against
+the build. Requires an elevated shell.
 
-O template de partitura do MuseScore é instalado separadamente:
+The MuseScore notation template is installed separately:
 
 ```powershell
 .\scripts\install-musescore-template.ps1
 ```
 
-## Uso
+## Usage
 
-1. Abra o MuseScore 4 e adicione o PartePlay como efeito.
-2. **Carregar áudio** — WAV, FLAC, OGG ou MP3.
-3. Confira BPM, métrica e compassos exibidos; se quiser, exporte o mapa de tempo em `.mid` e importe no hospedeiro.
-4. Escolha o **instrumento** e ajuste a **afinação de referência** se necessário.
-5. Toque: partitura e áudio juntos, na tonalidade do instrumento.
-6. Para estudo, reduza a **velocidade de treino** e/ou ative o **loop de trecho**.
+1. Open MuseScore 4 and add PartePlay as an effect.
+2. **Load audio** — WAV, FLAC, OGG or MP3.
+3. Confirm the BPM, meter and bar count; export the MIDI time map if you want the DAW to match.
+4. Set the **reference tuning** if your file is not A4 = 440 Hz (the plugin reports the detected
+   tuning; a ratio of 1.0 plays the original buffer untouched).
+5. Play: the track follows the host transport exactly.
+6. To study: lower **training speed** and/or enable a **bar loop**.
 
-## Parâmetros
+## Parameters
 
-| ID | Faixa / Opções | Padrão |
+| ID | Range / options | Default |
 |---|---|---|
-| `instrument` | Piano (C) · Trombone (C) · Trompete (B♭) · Sax Tenor (B♭) · Sax Alto (E♭) · Trompa (F) · Ajuste Manual | Piano (C) |
-| `referencePitch` | 432,0 – 445,0 Hz (passo 0,1) | 440,0 |
-| `transpose` | −12 … +12 semitons | 0 |
-| `trainingSpeed` | 0,50 – 1,50 | 1,00 |
-| `loopEnabled` | liga/desliga | false |
-| `loopStart` / `loopEnd` | 1 – 10000 (compasso) | 1 |
-| `muted` | silencia a saída local | false |
+| `referencePitch` | 432.0 – 445.0 Hz (step 0.1) | 440.0 |
+| `trainingSpeed` | 0.50 – 1.50 (step 0.01) | 1.00 |
+| `loopEnabled` | on / off | false |
+| `loopStart` / `loopEnd` | 1 – 10000 (bar) | 1 |
+| `muted` | silences local output | false |
 
-Todos os parâmetros são gravados na sessão do hospedeiro e ficam disponíveis para automação.
+All parameters are persisted in the host session and available for automation.
 
-## Arquitetura
+## Architecture
 
 ```
 Source/
-  PluginProcessor   — núcleo: parâmetros, sincronia, orquestração da transposição
-  PluginEditor      — editor 5:4 (painéis, LookAndFeel, layout)
-  Theme.h           — tokens visuais e rotinas de pintura
-  FilePlayer        — carregamento, reprodução, loop, picos da forma de onda
-  PitchShifter      — engine de pitch-shift offline (isolada, substituível)
-  TempoAnalyser     — BPM, métrica, compassos e afinação
-  Instrument        — domínio musical: instrumentos, semitons e ratio (fonte única)
-  ParameterIds.h    — identificadores de parâmetro (fonte única)
-  MidiMapExporter   — mapa de tempo em MIDI 1.0
-  Text              — i18n e interpolação de texto
-  Waveform.h        — estrutura de picos
+  PluginProcessor   — core: parameters, host sync, playback pipeline
+  PluginEditor      — the 5:4 editor (panels, LookAndFeel, layout, locale selector)
+  Theme.h           — visual tokens and painting helpers
+  FilePlayer        — loading, playback, loop, waveform peaks
+  PitchShifter      — offline pitch-shift engine (isolated, replaceable; used only for
+                      reference-vs-detected tuning compensation)
+  TempoAnalyser     — BPM, meter, bars and tuning detection
+  Tuning.*          — music domain: reference notes, cents, playback ratio (single source)
+  FingerprintWorker — Chromaprint fingerprinting off the audio thread, async state machine
+  MidiMapExporter   — MIDI 1.0 time-map export
+  ParameterIds.h    — parameter identifiers (single source)
+  Text.*            — i18n (pt-BR | en-GB | en-US | es-ES) and text interpolation
 Tests/
-  DomainTests.cpp   — gate V1 (convenção e direção) e invariantes de encoding
+  DomainTests.cpp   — 313 checks: tuning, encoding, i18n, fingerprint, player publication
 ```
 
-Três decisões estruturais merecem destaque:
+Structural decisions worth knowing:
 
-- **Buffers por `shared_ptr<const>`**: o áudio original e o transposto são snapshots imutáveis trocados atomicamente. Uma mudança de parâmetro não interrompe a reprodução.
-- **Texto sempre por `Text::from`/`Text::format`**: `juce::String::formatted` converte o formato com `String(const char*)` e, no Windows, usa `_vsnwprintf`, que exige `wchar_t*` em `%s` — a causa raiz dos acentos quebrados. Toda interpolação passa por `Text`.
-- **Matemática musical no domínio**: `Tuning::playbackRatio` concentra o cálculo `2^(semitons/12) × referência/afinação_do_arquivo` em código puro e testável, fora do processor. O gate V1 é verificável sem host e sem ouvido.
+- **Snapshot buffers** — the original and processed audio are immutable snapshots published through
+  atomically swapped `shared_ptr<const>`; a parameter change never interrupts playback.
+- **Every UI string goes through `Text::t`** — `juce::String::formatted` treats `%s` as `wchar_t*`
+  on Windows, which is the root cause of broken accents. All interpolation goes through `Text`.
+- **Music math lives in the domain** — `Tuning::playbackRatio` concentrates the ratio math in pure,
+  testable code, outside the processor: the tuning gate is verified without a host and without ears.
+- **No lock on the audio thread** — `processBlock` never takes a mutex; the file player swap is the
+  lock-free publication that the race test locks down.
 
-## Limitações conhecidas
+## Known limitations
 
-- O vocoder de fase degrada transientes (material percussivo) e pode soar "fantasiado" em notas longas com deslocamentos grandes (±12 semitons).
-- O recálculo do pitch-shift roda na thread de mensagens e pode congelar a interface por um instante (o áudio continua tocando).
-- BPM, métrica e afinação são **heurísticos** e servem de referência de montagem; a verdade é sempre a do hospedeiro.
-- A injeção direta de tempo no host é limitada pela API VST3 (relações Slave/Master) — por isso a exportação do mapa em `.mid`.
-- Não há cobertura de testes para o áudio em si (sincronia sob time-stretch, vocoder): ainda depende de validação no host.
+- The phase vocoder degrades transients (percussive material) and can sound "washed" on long notes
+  under large shifts.
+- BPM, meter and tuning are **heuristics** — they are a reference for assembly; the host transport
+  is always the truth. Automatic BPM does not re-align the score by itself yet.
+- The track **does not appear** in MuseScore's instrument list; nothing is injected into the score.
+- Direct transport injection is bounded by the VST3 API (Slave/Master relations) — hence the `.mid`
+  time-map export.
+- The audio path itself (sync under time-stretch, vocoder) has no automated tests and still relies
+  on host validation.
 
-## Documentação
+## Documentation
 
-A documentação de desenvolvimento vive em [`docs-dev/`](docs-dev/):
+- [`CHANGELOG.md`](CHANGELOG.md) — what changed, per release.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — conventions, test gate, code of conduct for PRs.
+- [`LICENSE`](LICENSE) — the AGPL-3.0 text.
 
-| Arquivo | Conteúdo |
-|---|---|
-| [`Funcionalidades-Atuais.md`](docs-dev/Funcionalidades-Atuais.md) | O que o plugin faz hoje, com detalhe técnico por área |
-| [`Especificacao-Tecnica.md`](docs-dev/Especificacao-Tecnica.md) | Especificação integrada e escopo das fases futuras |
-| [`Analise-e-Roadmap.md`](docs-dev/Analise-e-Roadmap.md) | Riscos, decisões e notas de arquitetura |
-| [`Proximos-Passos.md`](docs-dev/Proximos-Passos.md) | Handoff e validações pendentes |
-| [`Lancamento-e-Redes-Sociais.md`](docs-dev/Lancamento-e-Redes-Sociais.md) | Material de divulgação do vídeo de teste (LinkedIn, YouTube, Instagram, TikTok) e status real do produto |
-| [`visual/5x4-camadas/`](docs-dev/visual/5x4-camadas/) | Referência visual em camadas do editor (canvas 2000×1600) |
+## Contributing
 
-## Licença
+Contributions are welcome — the full guide is in [`CONTRIBUTING.md`](CONTRIBUTING.md). The minimum:
+run `ctest` before opening a PR, keep UTF-8 **with BOM** (that is a project decision, not an RFC
+requirement), and route every UI string through `Text::t` in all four locales.
 
-O JUCE 9 é **duplo-licenciado**: [AGPLv3](https://www.gnu.org/licenses/agpl-3.0.html) ou a licença comercial da JUCE. O AGPLv3 é mais restritivo que a GPL — exige disponibilité do código-fonte a quem recebe o binário, o que vale para uso em rede além da distribuição.
+## License
 
-Enquanto o projeto não decidir por uma dessas vias, o caminho compatível é: publicar o código-fonte sob AGPLv3 junto do binário, ou adquirir a licença comercial da JUCE para fechar a distribuição. Essa é uma decisão de negócio ainda em aberto — o repositório ainda não tem arquivo `LICENSE`.
+**[AGPL-3.0](LICENSE)** — see the license file for the full text.
+
+JUCE 9 is **dual-licensed**: AGPLv3 or the commercial JUCE licence. AGPL is more restrictive than
+GPL — it also covers network use. If you need to close the source you must buy the commercial
+licence; whether PartePlay ships a commercial edition is an open product decision (T-16).
 
 ---
 
-## Autoria
+## Author
 
-**Rubens ("Rubinho") Lyra** — arquitetura e desenvolvimento do PartePlay.
+**Rubens Lyra** — architecture and development of PartePlay.
 
-| Atribuição | O que envolveu |
+| Area | What it involved |
 |---|---|
-| **Arquitetura de software** | Modelo de domínio musical centralizado (`Instrument`, `ParameterIds`), separação de engines substituíveis, decisões de thread-safety, análise de viabilidade contra as limitações reais do VST3. |
-| **C++ / JUCE / DSP de áudio** | Implementação do vocoder de fase, do player sincronizado ao transport, do analisador de tempo e do editor JUCE. |
-| **Integração VST3 / MuseScore** | Contrato do SDK, respeitamento do papel Slave/Master do transporte, mapa de tempo em MIDI 1.0 e o template de partitura para o MuseScore 4. |
-| **UI/UX e design system** | Redesenho do editor em 5:4, sistema de tokens (`Source/Theme.h`), painéis e identidade visual. |
-| **Produto, roadmap e documentação** | Escopo e priorização, mapeamento às normas ISO/IEC, handoff de trabalho e este README. |
-| **DevOps / build / release** | CMake com presets, scripts de instalação com verificação de hash, suíte de testes wired no CTest. |
+| Software architecture | Centralized music-domain model (`Tuning`, `ParameterIds`), replaceable engine seams, thread-safety decisions, feasibility analysis against real VST3 constraints |
+| C++ / JUCE / audio DSP | Phase vocoder, host-synced player, tempo analyser, offline fingerprint worker, JUCE editor |
+| VST3 / MuseScore integration | SDK contract, Slave/Master transport role, MIDI 1.0 time-map export, MuseScore 4 notation template |
+| UI/UX & design system | 5:4 editor redesign, token system (`Source/Theme.h`), panels, visual identity |
+| Product, roadmap & docs | Scope and prioritization, internationalization, handoff, this README |
+| DevOps / build / release | CMake presets, install scripts with hash verification, CTest suite, multi-platform CI |
 
 - GitHub: [github.com/rubenslyra/parteplay](https://github.com/rubenslyra/parteplay)
 - LinkedIn: [linkedin.com/in/rubenslyra](https://www.linkedin.com/in/rubenslyra)
 
-Contribuições são bem-vindas. O código segue o estilo do JUCE e a convenção de domínio musical registrada em `Source/Instrument.h` — alterá-la é uma decisão de produto, não um detalhe de implementação.
-
 ---
 
-## Referências
+## References
 
-### Normas e padrões
+### Standards in scope
 
-| Norma | Escopo no projeto |
+| Standard | Scope in the project |
 |---|---|
-| **ISO/IEC 12207** (ABNT NBR ISO/IEC 12207) | Processos de ciclo de vida de software: desenvolvimento, manutenção e documentação. |
-| **ISO/IEC 25010** (ABNT NBR ISO/IEC 25010) | Modelo de qualidade do produto de software — base do rastreamento de requisitos e atributos. |
-| **ISO 16:1975** — *Acoustics — Standard tuning frequency (440 Hz) for musical pitch* | Frequência de afinação padrão e a convenção de centavos. (Nota: o repositório citava "ISO 16:2005"; a edição vigente é a de 1975, com confirmação em 2004.) |
-| **MIDI 1.0 — RP-001** (MIDI Manufacturers Association / AMEI) | Formato do arquivo de mapa de tempo exportado (eventos de tempo, assinatura e nome de trilha). |
-| **VST3 SDK** (Steinberg Media Technologies) | Interface do plugin, contrato de transporte e o papel Slave/Master. |
-| **ISO 9241-210:2019** | Ergonomia da interação homem-sistema aplicada ao editor (design centrado no usuário). |
-| **UTF-8 — RFC 3629** | Codificação de todo o texto do repositório, com BOM por decisão de projeto. |
-| **C++17** (ISO/IEC 14882:2017) | Norma da linguagem em que o plugin é escrito. |
+| **ISO 16:1975** — *Acoustics — Standard tuning frequency (440 Hz)* | `Tuning::defaultReferenceHz = 440.0`, `Tuning::centsBetween` |
+| **MIDI 1.0 — RP-001** (MMA / AMEI) | The exported time-map file format in `MidiMapExporter` |
+| **VST3 SDK** (Steinberg) | Plugin interface, transport contract, Slave/Master role |
+| **C++17** (ISO/IEC 14882:2017) | `cxx_std_17`, no extensions |
 
-### Bibliografia técnica
+### Technical bibliography
 
-- **JUCE 9.0.2** — *The JUCE Framework*. [Documentação](https://docs.juce.com/master/) e [licenciamento](https://juce.com/legal/juce-9-licence/).
-- **Oppenheim, A. V.; Schafer, R. W.** — *Discrete-Time Signal Processing*. 3. ed. Pearson, 2010. Capítulos 7–9: DFT, transformada rápida de Fourier e análise por blocos sobrepostos.
-- **Laroche, J.; Dolson, M.** — "Improved phase vocoder time-scale modification of audio". *IEEE Transactions on Speech and Audio Processing*, v. 7, n. 3, p. 259–266, 1999. Propagação de fase usada no `PitchShifter`.
-- **Flanagan, J. L.** — "The Synthesis of Complex Audio Spectra by Means of Short-Term Fourier Analysis". *IEEE Transactions on Audio and Electroacoustics*, v. 10, n. 2, p. 119–126, 1962. Análise de envelopes por fluxo de sintonia, base da detecção de transientes.
-- **Duxbury, P.** — *Synthesis and Simulation of Audio: A Digital Audio Approach*. Academic Press, 2000. Phase vocoder, transposição de tom e time-stretching.
-- **Sethares, W. M.** — *Tuning, Timbre, Spectrum, Scale*. 2. ed. Springer, 2002. Por que a afinação de referência (432–445 Hz) importa na prática musical.
-- **Bregman, A. S.** — "On the Representation of Durational Information in Music". *Journal of the Acoustical Society of America*, v. 37, n. 2, p. 244–258, 1965. Estrutura rítmica e metrical levels, base da detecção de downbeat.
-- **Dixmier, A.** — *Mathématiques et musique*. Hermann, 1982. Formalismo matemático do sistema musical aplicado à transposição.
-- **Mackey, N.** — *Time–Frequency Analysis: Fourier and Wavelet Transforms and Context*. 2. ed. Cambridge University Press, 2015. Cubos de constante-Q usados na detecção de tom.
-- **Zwicker, E.; Fastl, H.** — *Psychoacoustics: Facts and Models*. 3. ed. Springer, 2013. Faixa de audibilidade que o detector de tom percorre.
-- **Gómez, E.; Bonada, J.** — "Sinusoids and Transients in Sound Synthesis". *Journal of New Music Research*, v. 33, n. 2, p. 137–158, 2004. Separação harmônico-percussivo: por que vocoders escorregam em material percussivo.
-- **Aguirre, M. D.; Wavre, P.; Harte, C.** — "Transposing time, frequency, and timbre with maximum flexibility". *EURASIP Journal on Applied Signal Processing*, v. 2004, n. 1, p. 289–306, 2004. Referência para engines alternativas ao `PitchShiftEngine`.
+- **JUCE 9.0.2** — *The JUCE Framework*. [Docs](https://docs.juce.com/master/) and
+  [licensing](https://juce.com/legal/juce-9-licence/).
+- **Laroche, J.; Dolson, M.** — "Improved phase vocoder time-scale modification of audio".
+  *IEEE Trans. Speech and Audio Processing*, v. 7, n. 3, 1999 — phase propagation in `PitchShifter`.
+- **Oppenheim, A. V.; Schafer, R. W.** — *Discrete-Time Signal Processing*. 3rd ed. Pearson,
+  2010 — ch. 7–9: DFT, FFT, overlap-add block analysis.
+- **Zwicker, E.; Fastl, H.** — *Psychoacoustics: Facts and Models*. 3rd ed. Springer, 2013 — the
+  audibility range the pitch detector scans.
 
-### Nomenclatura instrumental
+### Licensing
 
-- **MIMO — *Musical Instrument Museums Online*** (Horniman Museum and partners) — Recomendações de nomenclatura de instrumentos e de transposição, alinhadas à tabela de `Source/Instrument.h`.
-- **MIDI Manufacturers Association (MMA) / AMEI** — *RP-001: Detailed MIDI Specification*. Formaliza os eventos de tempo e de assinatura de tempo usados pelo `MidiMapExporter`.
-
-### Licenças
-
-- **GNU AGPLv3** — *GNU Affero General Public License, version 3*. Seção 13, sobre interação remota. Ver [licença da JUCE](https://juce.com/legal/juce-9-licence/) para a via comercial.
-- **MIDI 1.0** é especificação pública da MMA/AMEI, de uso livre.
-
-### Ferramentas
-
-- **Microsoft Visual Studio 2022** — compilador MSVC 14.44, C++17 com `/utf-8`; compila o plugin e a suíte de testes.
-- **CMake 3.22+** — geração de build, presets MSVC/Ninja e integração com CTest.
-- **MuseScore 4** (MuseScore Foundation) — hospedeiro de referência; destino do template de partitura e do mapa de tempo em MIDI.
-- **Git** — controle de versão.
+- **GNU AGPLv3** — section 13 covers remote (network) interaction; see the
+  [JUCE licence](https://juce.com/legal/juce-9-licence/) for the commercial route.
+- **Chromaprint** 1.6.1 (LGPL) — statically linked for the offline fingerprint; notices pending in
+  the distribution.
