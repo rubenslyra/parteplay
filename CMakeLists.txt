@@ -102,7 +102,16 @@ set(FFT_LIB                  kissfft    CACHE STRING "Backend de FFT do Chromapr
 # a busca so passa com KISSFFT_ROOT explicito.
 set(KISSFFT_ROOT "${CHROMAPRINT_ROOT}/src/3rdparty/kissfft" CACHE PATH "KissFFT embutido" FORCE)
 
+# O Chromaprint entra como biblioteca ESTATICA (exigencia da LGPL 2.1), mas o
+# VST3 no Linux e um shared object. No ELF, codigo de objeto que vai para uma
+# .so precisa de -fPIC, e sem ele o link morre com "relocation R_X86_64_PC32
+# against symbol ... can not be used when making a shared object". No Windows
+# o conceito nao existe e a variavel e ignorada.
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 add_subdirectory("${CHROMAPRINT_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/chromaprint" EXCLUDE_FROM_ALL)
+# Restore: o valor acima nao pode vazar para os alvos do JUCE, que tem as
+# propriasPoliticas de PIC.
+set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
 
 unset(BUILD_TESTS             CACHE)
 unset(BUILD_TOOLS             CACHE)
