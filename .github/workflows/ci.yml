@@ -254,7 +254,14 @@ jobs:
           set -euo pipefail
           bundle=$(find build/macos-universal -type d -name 'PartePlay.vst3' | head -1)
           test -n "$bundle" || { echo "::error::bundle universal nao encontrado"; exit 1; }
-          bin=$(find "$bundle" -name '*.dylib' -o -name '*.so' | head -1)
+          # Num bundle VST3 de macOS o executavel fica em Contents/MacOS/ com o
+          # nome do produto e SEM extensao: procurar por *.dylib nao acha nada.
+          # A ordem importa: primeiro o caminho do bundle, depois qualquer
+          # Mach-O por extensao (se um dia o layout mudar).
+          bin=$(find "$bundle/Contents/MacOS" -maxdepth 1 -type f 2>/dev/null | head -1)
+          if [ -z "$bin" ]; then
+            bin=$(find "$bundle" -type f \( -name '*.dylib' -o -name '*.so' \) | head -1)
+          fi
           test -n "$bin" || { echo "::error::binario do bundle nao encontrado"; exit 1; }
           lipo_archs=$(lipo -archs "$bin")
           echo "arquiteturas: $lipo_archs"
