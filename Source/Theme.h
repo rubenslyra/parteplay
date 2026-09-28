@@ -4,10 +4,8 @@
 
 // Tokens visuais do PartePlay — "Vidro Rítmico".
 //
-// Fonte única de cor, tipografia e geometria da interface. Os valores espelham
-// docs-dev/visual/styles.css (conversão oklch -> sRGB) e a referência em camadas
-// docs-dev/visual/5x4-camadas. Nenhum componente deve fixar cor por conta própria:
-// usar estes tokens mantém a UI sincronizada com a referência visual.
+// Fonte única de cor, tipografia e geometria da interface. Nenhum componente
+// deve fixar cor por conta própria: usar estes tokens mantém a UI sincronizada.
 namespace Theme
 {
     // Superfícies
@@ -66,7 +64,7 @@ namespace Theme
         g.drawRoundedRectangle (area.reduced (0.5f), radius, 1.0f);
     }
 
-    // Micro-rótulo de seção ("01 / INSTRUMENTO"), em caixa alta e cor apagada.
+    // Micro-rótulo de seção ("01 / TRACK"), em caixa alta e cor apagada.
     inline void paintSectionTitle (juce::Graphics& g, juce::Rectangle<float> area,
                                    const juce::String& text)
     {

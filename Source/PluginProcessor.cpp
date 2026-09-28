@@ -1,6 +1,5 @@
-﻿#include "PluginProcessor.h"
+#include "PluginProcessor.h"
 #include "PluginEditor.h"
-#include "Instrument.h"
 #include "ParameterIds.h"
 #include "PitchShifter.h"
 #include "MidiMapExporter.h"
@@ -13,9 +12,7 @@ PlayScoreProcessor::PlayScoreProcessor()
                                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       parameters (*this, nullptr, "Parameters", createParameterLayout())
 {
-    instrumentValue    = parameters.getRawParameterValue (Parameter::instrument);
     pitchValue         = parameters.getRawParameterValue (Parameter::referencePitch);
-    transposeValue     = parameters.getRawParameterValue (Parameter::transpose);
     trainingSpeedValue = parameters.getRawParameterValue (Parameter::trainingSpeed);
     loopEnabledValue   = parameters.getRawParameterValue (Parameter::loopEnabled);
     loopStartValue     = parameters.getRawParameterValue (Parameter::loopStart);
@@ -36,16 +33,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout PlayScoreProcessor::createPa
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
-    layout.add (std::make_unique<juce::AudioParameterChoice> (Parameter::instrument, Text::t ("Instrumento"),
-                                                              InstrumentTable::getDisplayNames(), 0));
-
     layout.add (std::make_unique<juce::AudioParameterFloat> (Parameter::referencePitch, Text::t ("Afinação (Hz)"),
                   juce::NormalisableRange<float> ((float) Tuning::minReferenceHz,
                                                   (float) Tuning::maxReferenceHz, 0.1f),
                   (float) Tuning::defaultReferenceHz));
-
-    layout.add (std::make_unique<juce::AudioParameterInt> (Parameter::transpose, Text::t ("Transposição (semitons)"),
-                  -12, 12, 0));
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (Parameter::trainingSpeed, Text::t ("Velocidade (treino)"),
                   juce::NormalisableRange<float> (0.5f, 1.5f, 0.01f), 1.0f));
@@ -64,25 +55,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout PlayScoreProcessor::createPa
     return layout;
 }
 
-int PlayScoreProcessor::getCurrentSemitones() const
-{
-    if (instrumentValue == nullptr || transposeValue == nullptr)
-        return 0;
-
-    const auto selected = InstrumentTable::fromIndex (static_cast<int> (*instrumentValue));
-    return (selected == Instrument::Manual)
-        ? static_cast<int> (*transposeValue)
-        : InstrumentTable::semitonesFor (selected);
-}
-
 double PlayScoreProcessor::computeCurrentPitchRatio (double baseFilePitchHz) const
 {
     if (pitchValue == nullptr)
         return 1.0;
 
-    return Tuning::playbackRatio (getCurrentSemitones(),
-                                  static_cast<double> (*pitchValue),
-                                  baseFilePitchHz);
+    // Só a afinação de referência: a tabela de instrumentos e a transposição
+    // manual saíram da v1.x, então este ratio é a compensação entre a
+    // referência escolhida e a afinação real medida no arquivo.
+    return Tuning::playbackRatio (static_cast<double> (*pitchValue), baseFilePitchHz);
 }
 
 void PlayScoreProcessor::timerCallback()
@@ -94,20 +75,18 @@ void PlayScoreProcessor::timerCallback()
     const int  loopFrom = (loopStartValue != nullptr) ? (int) *loopStartValue : 1;
     const int  loopTo   = (loopEndValue != nullptr)   ? (int) *loopEndValue   : 1;
 
-    std::shared_ptr<const juce::AudioBuffer<float>> source;
-    double basePitch = Tuning::defaultReferenceHz;
+    const auto current = std::atomic_load (&player);
 
-    {
-        // Loop e leitura da afinação detectada sob o mesmo lock que o áudio usa.
-        const juce::ScopedLock sl (stateLock);
+    if (current == nullptr || ! current->hasAudio())
+        return;
 
-        if (player == nullptr || ! player->hasAudio())
-            return;
+    // setLoop e setPlaybackBuffer publicam em átomos; não precisam do stateLock,
+    // e assim a message thread nunca disputa com o áudio. O setPlaybackBuffer
+    // recebe o ponteiro de um buffer já transformado, não o player.
+    current->setLoop (loopOn, loopFrom, loopTo);
 
-        player->setLoop (loopOn, loopFrom, loopTo);
-        basePitch = player->getDetectedTuningHz();
-        source    = player->getSourceBuffer();
-    }
+    std::shared_ptr<const juce::AudioBuffer<float>> source = current->getSourceBuffer();
+    const double basePitch = current->getDetectedTuningHz();
 
     const double ratio = computeCurrentPitchRatio (basePitch);
 
@@ -122,18 +101,17 @@ void PlayScoreProcessor::timerCallback()
     if (std::abs (ratio - 1.0) < 1e-4 && std::abs (durationScale - 1.0) < 1e-4)
     {
         // Identidade: reprodução direta do original.
-        const juce::ScopedLock sl (stateLock);
-        player->setPlaybackBuffer (nullptr, 1.0);
+        current->setPlaybackBuffer (nullptr, 1.0);
     }
     else
     {
-        // Transformação cara fora do lock; publicação atômica do resultado.
+        // Transformação cara fora de qualquer região sincronizada; o resultado
+        // só entra no áudio quando atomic_store publica o ponteiro.
         auto transformed = PitchShiftEngine::transform (*source, ratio, durationScale);
         if (transformed == nullptr)
             return;
 
-        const juce::ScopedLock sl (stateLock);
-        player->setPlaybackBuffer (std::move (transformed), durationScale);
+        current->setPlaybackBuffer (std::move (transformed), durationScale);
     }
 
     committedGeneration = fileGeneration;
@@ -173,8 +151,6 @@ void PlayScoreProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     juce::ScopedNoDenormals noDenormals;
     buffer.clear();
 
-    activeSemitones.store (getCurrentSemitones(), std::memory_order_relaxed);
-
     auto playHead = getPlayHead();
     if (playHead == nullptr)
     {
@@ -205,15 +181,16 @@ void PlayScoreProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         return;
     }
 
-    if (player == nullptr)
-        return;
+    // Sem lock. O snapshot custa um incremento de refcount e é a única região
+    // sincronizada do caminho de áudio; o laço de amostras em fillOutput roda
+    // fora dela. A thread de mensagem pode trocar o player e o buffer transformado
+    // a qualquer momento sem esperar o áudio terminar o bloco.
+    const auto current = std::atomic_load (&player);
 
-    const juce::ScopedLock sl (stateLock);
-
-    if (player->hasAudio())
+    if (current != nullptr && current->hasAudio())
     {
         const auto startSample = transportSample.load (std::memory_order_relaxed);
-        const bool withinRange = player->fillOutput (buffer, startSample, getSampleRate());
+        const bool withinRange = current->fillOutput (buffer, startSample, getSampleRate());
         reachedEnd.store (! withinRange, std::memory_order_relaxed);
     }
 
@@ -229,39 +206,44 @@ void PlayScoreProcessor::resetPlaybackState()
 
 void PlayScoreProcessor::loadAudioFile (const juce::File& file)
 {
-    // Decodificação e análise fora do lock: só a troca do ponteiro é crítica.
-    auto newPlayer = std::make_unique<FilePlayer>();
+    // Decodificação e análise fora do lock, e fora do caminho de áudio: só a
+    // publicação do ponteiro é crítica. Quem estiver tocando mantém o antigo
+    // vivo pelo próprio snapshot e termina o bloco sem notar a troca.
+    auto newPlayer = std::make_shared<FilePlayer>();
     newPlayer->loadFromFile (file);
 
     if (! newPlayer->hasAudio())
         return;
 
-    const juce::ScopedLock sl (stateLock);
-    player = std::move (newPlayer);
-    loadedFileName = player->getSourceFileName();
-    reachedEnd.store (false, std::memory_order_relaxed);
+    {
+        const juce::ScopedLock sl (stateLock);
+        loadedFileName = newPlayer->getSourceFileName();
+        reachedEnd.store (false, std::memory_order_relaxed);
+    }
+
+    std::atomic_store (&player, std::move (newPlayer));
     ++fileGeneration;
+
+    // A impressão digital sai daqui, e não do player: é trabalho de fundo e
+    // não pode atrasar o carregamento. Um novo start cancela o anterior, então
+    // trocar de arquivo rapidinho não empilha cálculos.
+    fingerprintWorker.start (file);
 }
+
 
 bool PlayScoreProcessor::exportTempoMap (const juce::File& file)
 {
-    double bpm = 0.0;
-    int beatsPerBar = 4;
+    const auto current = std::atomic_load (&player);
 
-    {
-        const juce::ScopedLock sl (stateLock);
+    if (current == nullptr || ! current->hasAudio())
+        return false;
 
-        if (player == nullptr || ! player->hasAudio())
-            return false;
-
-        bpm         = player->getBpm();
-        beatsPerBar = player->getBeatsPerBar();
-    }
+    const double bpm = current->getBpm();
 
     if (bpm <= 0.0)
         return false;
 
-    return MidiMapExporter::writeTempoMap (file, bpm, beatsPerBar);
+    return MidiMapExporter::writeTempoMap (file, bpm, current->getBeatsPerBar());
 }
 
 juce::AudioProcessorEditor* PlayScoreProcessor::createEditor()
@@ -286,11 +268,6 @@ double PlayScoreProcessor::getTransportSampleRate() const noexcept
     return transportSampleRate.load (std::memory_order_relaxed);
 }
 
-int PlayScoreProcessor::getActiveSemitones() const noexcept
-{
-    return activeSemitones.load (std::memory_order_relaxed);
-}
-
 bool PlayScoreProcessor::hasReachedEndOfFile() const noexcept
 {
     return reachedEnd.load (std::memory_order_relaxed);
@@ -302,28 +279,67 @@ juce::String PlayScoreProcessor::getLoadedFileName() const
     return loadedFileName;
 }
 
+juce::String PlayScoreProcessor::getSongTitle() const
+{
+    const auto current = std::atomic_load (&player);
+    return current != nullptr ? current->getTaggedTitle() : juce::String();
+}
+
+juce::String PlayScoreProcessor::getSongIsrc() const
+{
+    const auto current = std::atomic_load (&player);
+    return current != nullptr ? current->getTaggedIsrc() : juce::String();
+}
+
+juce::String PlayScoreProcessor::getSongYear() const
+{
+    const auto current = std::atomic_load (&player);
+    return current != nullptr ? current->getTaggedYear() : juce::String();
+}
+
+Fingerprint::State PlayScoreProcessor::getIdentificationState() const
+{
+    return fingerprintWorker.poll().state;
+}
+
+Fingerprint::Failure PlayScoreProcessor::getIdentificationFailure() const
+{
+    return fingerprintWorker.poll().failure;
+}
+
+juce::String PlayScoreProcessor::getIdentificationMessage() const
+{
+    return fingerprintWorker.poll().message;
+}
+
+int PlayScoreProcessor::getIdentificationFingerprintLength() const
+{
+    return fingerprintWorker.poll().fingerprint.length();
+}
+
+
 juce::int64 PlayScoreProcessor::getFileSizeBytes() const
 {
-    const juce::ScopedLock sl (stateLock);
-    return player != nullptr ? player->getSourceFileSize() : 0;
+    const auto current = std::atomic_load (&player);
+    return current != nullptr ? current->getSourceFileSize() : 0;
 }
 
 double PlayScoreProcessor::getAudioBpm() const
 {
-    const juce::ScopedLock sl (stateLock);
-    return player != nullptr ? player->getBpm() : 0.0;
+    const auto current = std::atomic_load (&player);
+    return current != nullptr ? current->getBpm() : 0.0;
 }
 
 int PlayScoreProcessor::getBeatsPerBar() const
 {
-    const juce::ScopedLock sl (stateLock);
-    return player != nullptr ? player->getBeatsPerBar() : 4;
+    const auto current = std::atomic_load (&player);
+    return current != nullptr ? current->getBeatsPerBar() : 4;
 }
 
 double PlayScoreProcessor::getDetectedTuningHz() const
 {
-    const juce::ScopedLock sl (stateLock);
-    return player != nullptr ? player->getDetectedTuningHz() : Tuning::defaultReferenceHz;
+    const auto current = std::atomic_load (&player);
+    return current != nullptr ? current->getDetectedTuningHz() : Tuning::defaultReferenceHz;
 }
 
 double PlayScoreProcessor::getDetectedTuningCents() const
@@ -334,39 +350,39 @@ double PlayScoreProcessor::getDetectedTuningCents() const
 
 double PlayScoreProcessor::getDurationSeconds() const
 {
-    const juce::ScopedLock sl (stateLock);
-    return player != nullptr ? player->getDurationSeconds() : 0.0;
+    const auto current = std::atomic_load (&player);
+    return current != nullptr ? current->getDurationSeconds() : 0.0;
 }
 
 double PlayScoreProcessor::getPlaybackDurationSeconds() const
 {
-    const juce::ScopedLock sl (stateLock);
-    return player != nullptr ? player->getPlaybackDurationSeconds() : 0.0;
+    const auto current = std::atomic_load (&player);
+    return current != nullptr ? current->getPlaybackDurationSeconds() : 0.0;
 }
 
 int PlayScoreProcessor::getMeasureCount() const
 {
-    const juce::ScopedLock sl (stateLock);
-    return player != nullptr ? player->getMeasureCount() : 0;
+    const auto current = std::atomic_load (&player);
+    return current != nullptr ? current->getMeasureCount() : 0;
 }
 
 WaveformPtr PlayScoreProcessor::getWaveformPeaks() const
 {
-    const juce::ScopedLock sl (stateLock);
-    return player != nullptr ? player->getPeaks() : nullptr;
+    const auto current = std::atomic_load (&player);
+    return current != nullptr ? current->getPeaks() : nullptr;
 }
 
 bool PlayScoreProcessor::getLoopFractions (double& startFraction, double& endFraction) const
 {
-    const juce::ScopedLock sl (stateLock);
+    const auto current = std::atomic_load (&player);
 
-    if (player == nullptr)
+    if (current == nullptr)
     {
         startFraction = endFraction = 0.0;
         return false;
     }
 
-    return player->getLoopFractions (startFraction, endFraction);
+    return current->getLoopFractions (startFraction, endFraction);
 }
 
 double PlayScoreProcessor::getTrainingSpeed() const noexcept
@@ -392,21 +408,6 @@ int PlayScoreProcessor::getLoopEndMeasure() const noexcept
 bool PlayScoreProcessor::isOutputMuted() const noexcept
 {
     return mutedValue != nullptr && *mutedValue > 0.5f;
-}
-
-Instrument PlayScoreProcessor::getCurrentInstrument() const noexcept
-{
-    return InstrumentTable::fromIndex (getCurrentInstrumentIndex());
-}
-
-int PlayScoreProcessor::getCurrentInstrumentIndex() const noexcept
-{
-    return instrumentValue != nullptr ? static_cast<int> (*instrumentValue) : 0;
-}
-
-int PlayScoreProcessor::getManualSemitones() const noexcept
-{
-    return transposeValue != nullptr ? static_cast<int> (*transposeValue) : 0;
 }
 
 double PlayScoreProcessor::getReferencePitchHz() const noexcept

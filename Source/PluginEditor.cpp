@@ -1,9 +1,9 @@
 ﻿#include "PluginEditor.h"
 #include "PluginProcessor.h"
-#include "Instrument.h"
 #include "ParameterIds.h"
 #include "Text.h"
 #include "Theme.h"
+#include "Tuning.h"
 #include "Waveform.h"
 
 #include <cmath>
@@ -408,19 +408,31 @@ namespace
             repaint();
         }
 
+        // Anel sem dado não deve competir com anel que tem. Apagar o destaque
+        // (não o anel) é o que comunica "ainda não sei" sem parecer quebrado.
+        void setDimmed (bool shouldBeDimmed)
+        {
+            if (dimmed == shouldBeDimmed)
+                return;
+
+            dimmed = shouldBeDimmed;
+            repaint();
+        }
+
         void paint (juce::Graphics& g) override
         {
             const auto area = getLocalBounds().toFloat();
             Theme::paintRing (g, area);
 
             const float side = juce::jmin (area.getWidth(), area.getHeight());
-            g.setColour (Theme::azure);
+            g.setColour (dimmed ? Theme::muted : Theme::azure);
             g.setFont (Theme::monoFont (side * 0.36f, true));
             g.drawText (symbol, area, juce::Justification::centred);
         }
 
     private:
         juce::String symbol;
+        bool dimmed = false;
     };
 
 } // anonymous namespace
@@ -482,7 +494,7 @@ public:
         {
             const auto extension = juce::File (name).getFileExtension().toUpperCase()
                                                               .removeCharacters (Text::from ("."));
-            const auto megabytes = juce::String (static_cast<double> (processor.getFileSizeBytes())
+            const auto megabytes = Text::number (static_cast<double> (processor.getFileSizeBytes())
                                                  / (1024.0 * 1024.0), 1);
 
             metaLabel.setText (Text::format (Text::t ("{0} · {1} MB"), { extension, megabytes }),
@@ -747,36 +759,56 @@ private:
 };
 
 //==============================================================================
-class InstrumentPanel : public EditorPanel
+// Painel 03 — ficha da canção. Substituiu a tabela de instrumentos: a v1.x não
+// escolhe mais instrumento porque a reprodução já vem no tom do piano, e o que
+// o músico precisa confronting uma gravação é a identidade dela (título, ISRC,
+// ano) e o andamento original.
+//
+// Cada campo exibe também DE ONDE veio. Isso não é enfeite: o BPM é estimativa
+// do áudio, enquanto título/ISRC/ano vêm da tag do arquivo e, mais adiante, da
+// consulta ao MusicBrainz. Sem marcar a origem, um número estimado e um dado
+// cadastral pareceriam igualmente confiáveis — e não são.
+class SongSheetPanel : public EditorPanel
 {
 public:
-    InstrumentPanel (PlayScoreEditor&, PlayScoreProcessor& p)
+    SongSheetPanel (PlayScoreEditor&, PlayScoreProcessor& p)
         : EditorPanel (p)
     {
-        ring.setSymbol (Text::from ("C"));
         addAndMakeVisible (ring);
 
-        nameLabel.setFont (Theme::font (17.0f, true));
-        nameLabel.setColour (juce::Label::textColourId, Theme::foreground);
-        addAndMakeVisible (nameLabel);
+        titleLabel.setFont (Theme::font (17.0f, true));
+        titleLabel.setColour (juce::Label::textColourId, Theme::foreground);
+        addAndMakeVisible (titleLabel);
 
-        styleCaption (keyLabel);
-        addAndMakeVisible (keyLabel);
+        styleCaption (originLabel);
+        addAndMakeVisible (originLabel);
 
-        for (int i = 0; i < InstrumentTable::numEntries; ++i)
-        {
-            auto button = std::make_unique<juce::TextButton>();
-            button->setClickingTogglesState (true);
-            button->setRadioGroupId (radioGroup);
-            button->setTriggeredOnMouseDown (true);
+        styleCaption (isrcCaption);
+        addAndMakeVisible (isrcCaption);
+        styleMono (isrcValue);
+        isrcValue.setJustificationType (juce::Justification::centredRight);
+        addAndMakeVisible (isrcValue);
 
-            const int index = i;
-            button->onClick = [this, index] { selectIndex (index); };
+        styleCaption (yearCaption);
+        addAndMakeVisible (yearCaption);
+        styleMono (yearValue);
+        yearValue.setJustificationType (juce::Justification::centredRight);
+        addAndMakeVisible (yearValue);
 
-            buttons.push_back (button.get());
-            buttonOwners.push_back (std::move (button));
-            addAndMakeVisible (buttons.back());
-        }
+        styleCaption (bpmCaption);
+        addAndMakeVisible (bpmCaption);
+        styleMono (bpmValue);
+        bpmValue.setJustificationType (juce::Justification::centredRight);
+        addAndMakeVisible (bpmValue);
+
+        styleCaption (idCaption);
+        addAndMakeVisible (idCaption);
+        idValue.setJustificationType (juce::Justification::centredRight);
+        addAndMakeVisible (idValue);
+
+        styleCaption (noticeLabel);
+        noticeLabel.setJustificationType (juce::Justification::topLeft);
+        addAndMakeVisible (noticeLabel);
 
         refreshTexts();
         refreshState();
@@ -784,29 +816,60 @@ public:
 
     void refreshTexts() override
     {
-        title = Text::t ("03 / Instrumento");
+        title = Text::t ("03 / Ficha da canção");
 
-        for (int i = 0; i < static_cast<int> (buttons.size()); ++i)
-            buttons[static_cast<size_t> (i)]->setButtonText (
-                InstrumentTable::displayName (InstrumentTable::fromIndex (i)));
+        isrcCaption.setText (Text::t ("ISRC do fonograma"), juce::dontSendNotification);
+        yearCaption.setText (Text::t ("Ano de publicação"), juce::dontSendNotification);
+        bpmCaption.setText (Text::t ("BPM original"), juce::dontSendNotification);
+        idCaption.setText (Text::t ("Impressão digital"), juce::dontSendNotification);
 
+        // O sufixo do BPM vai pela tabela como o resto. Montado com Text::from
+        // ele sairia em pt-BR dentro de um painel em inglês — e o usuário leria
+        // "128.0 · estimado" sem entender por que a única palavra está errada.
+        bpmEstimatedSuffix = Text::t (" \xC2\xB7 estimado");
         repaint();
     }
 
     void refreshState() override
     {
-        const auto instrument = processor.getCurrentInstrument();
-        const int index = processor.getCurrentInstrumentIndex();
+        const auto songTitle = processor.getSongTitle();
+        const auto isrc      = processor.getSongIsrc();
+        const auto year      = processor.getSongYear();
+        const double bpm     = processor.getAudioBpm();
 
-        for (int i = 0; i < static_cast<int> (buttons.size()); ++i)
-            buttons[static_cast<size_t> (i)]->setToggleState (i == index, juce::dontSendNotification);
+        // O anel carrega o BPM porque é o dado que se procura de relance. A
+        // precisão de 0,5 BPM do analisador cabe no anel; o valor fino fica
+        // na linha de baixo, com a marcação de estimativa.
+        const bool hasBpm = bpm > 0.0;
+        ring.setSymbol (hasBpm ? compactNumber (bpm) : juce::String ("--"));
+        ring.setDimmed (! hasBpm);
 
-        ring.setSymbol (InstrumentTable::symbolFor (instrument));
-        nameLabel.setText (InstrumentTable::displayName (instrument), juce::dontSendNotification);
-        keyLabel.setText (Text::format (Text::t ("Afinação em {0} · {1} semitons"),
-                                        { InstrumentTable::keyNameFor (instrument),
-                                          InstrumentTable::signedSemitonesFor (instrument) }),
-                          juce::dontSendNotification);
+        titleLabel.setText (songTitle.isNotEmpty() ? songTitle
+                                                   : Text::t ("Sem título nas tags"),
+                           juce::dontSendNotification);
+
+        originLabel.setText (Text::t ("Lido das tags do arquivo"),
+                             juce::dontSendNotification);
+
+        // Campo ausente não vira invenção: mostra o traço e diz por quê. A
+        // mensagem é diferente para "o arquivo não diz" e "não há áudio", porque
+        // o usuário age de forma diferente em cada caso.
+        isrcValue.setText (isrc.isNotEmpty() ? formatIsrc (isrc) : missingValue(),
+                           juce::dontSendNotification);
+        yearValue.setText (year.isNotEmpty() ? year : missingValue(),
+                           juce::dontSendNotification);
+        bpmValue.setText (hasBpm ? (Text::number (bpm, 1) + bpmEstimatedSuffix)
+                                 : missingValue(),
+                           juce::dontSendNotification);
+
+        idValue.setText (describeIdentification (processor.getIdentificationState(),
+                                                processor.getIdentificationFailure()),
+                         juce::dontSendNotification);
+
+        noticeLabel.setText (buildNotice (songTitle.isNotEmpty(), isrc.isNotEmpty(),
+                                          year.isNotEmpty(), hasBpm,
+                                          processor.getIdentificationState()),
+                             juce::dontSendNotification);
     }
 
     void paint (juce::Graphics& g) override
@@ -819,51 +882,148 @@ public:
         auto area = contentArea();
 
         auto header = area.removeFromTop (64);
-        ring.setBounds (header.removeFromLeft (64).reduced (0, 0));
+        ring.setBounds (header.removeFromLeft (64));
         header.removeFromLeft (12);
-        nameLabel.setBounds (header.removeFromTop (24));
-        keyLabel.setBounds (header.removeFromTop (18));
+        titleLabel.setBounds (header.removeFromTop (24));
+        originLabel.setBounds (header.removeFromTop (18));
 
         area.removeFromTop (14);
 
-        juce::Grid grid;
-        grid.templateColumns = { juce::Grid::TrackInfo (juce::Grid::Fr (1)),
-                                 juce::Grid::TrackInfo (juce::Grid::Fr (1)) };
-        grid.templateRows    = { juce::Grid::TrackInfo (juce::Grid::Px (32)),
-                                 juce::Grid::TrackInfo (juce::Grid::Px (32)),
-                                 juce::Grid::TrackInfo (juce::Grid::Px (32)),
-                                 juce::Grid::TrackInfo (juce::Grid::Px (32)) };
-        grid.setGap (juce::Grid::Px (8));
+        // Linhas rótulo/valor: a coluna de rótulos tem largura fixa para os
+        // três alinharem, e o valor ocupa o resto à direita.
+        constexpr int rowHeight = 26;
+        constexpr int gap        = 4;
+        constexpr int captionWidth = 150;
 
-        for (auto* button : buttons)
-            grid.items.add (juce::GridItem (*button));
+        auto addRow = [&] (juce::Label& caption, juce::Label& value)
+        {
+            auto row = area.removeFromTop (rowHeight);
+            caption.setBounds (row.removeFromLeft (captionWidth));
+            value.setBounds (row);
+            area.removeFromTop (gap);
+        };
 
-        grid.performLayout (area);
+        addRow (isrcCaption, isrcValue);
+        addRow (yearCaption, yearValue);
+        addRow (bpmCaption, bpmValue);
+        addRow (idCaption, idValue);
+
+        noticeLabel.setBounds (area.removeFromTop (56));
     }
 
 private:
-    void selectIndex (int index)
+    // Campo ausente mostra um travessão. Construído por Text::from com escapes
+    // porque juce::String (const char*) lê os bytes como Latin-1: o travessão
+    // são 3 bytes e virariam 3 caracteres que não formam nada. Um hífen ASCII
+    // evitaria o problema, mas o travessão é o que distingue "não sei" de
+    // "valor zero" para quem lê a ficha.
+    static juce::String missingValue() { return Text::from ("\xE2\x80\x94"); }
+
+    static juce::String compactNumber (double value)
     {
-        auto* param = dynamic_cast<juce::AudioParameterChoice*> (
-            processor.parameters.getParameter (Parameter::instrument));
-
-        if (param == nullptr)
-            return;
-
-        const auto count = param->choices.size();
-
-        if (count > 1)
-            param->setValueNotifyingHost (static_cast<float> (index) / static_cast<float> (count - 1));
+        const auto rounded = std::round (value);
+        return juce::String ((int) rounded);
     }
 
-    static constexpr int radioGroup = 7101;
+    // BRABC1234567 -> BR-ABC-12-34567. O formato com hífen é o de exibição
+    // (ISO 3901:2001); o canônico, sem separador, é o que a API devolve.
+    static juce::String formatIsrc (const juce::String& raw)
+    {
+        if (raw.length() != 12)
+            return raw;
+
+        return raw.substring (0, 2) + "-" + raw.substring (2, 5) + "-"
+             + raw.substring (5, 7) + "-" + raw.substring (7, 12);
+    }
+
+    // Traduz o estado do worker para o que o usuário lê.
+    //
+    // Fica curto de propósito: a coluna de valor tem pouco mais de 100 px na
+    // largura mínima da janela, e esta linha divide espaço com três números. A
+    // explicação inteira vive no aviso embaixo, que ocupa a largura toda e
+    // quebra linha.
+    //
+    // O ponto que não pode ser atingido: `ready` quer dizer "a impressão digital foi
+    // calculada localmente", e NÃO "a faixa foi identificada". Nada saiu daqui
+    // para o AcoustID ainda — a consulta online não existe no código. Um texto
+    // que dissesse "identificada" seria mentira na tela, e é exatamente o tipo
+    // de erro que a ficha não pode cometer.
+    static juce::String describeIdentification (Fingerprint::State state,
+                                               Fingerprint::Failure failure)
+    {
+        switch (state)
+        {
+            case Fingerprint::State::idle:
+                return missingValue();
+
+            case Fingerprint::State::running:
+                return Text::t ("analisando…");
+
+            case Fingerprint::State::ready:
+                return Text::t ("pronta");
+
+            case Fingerprint::State::cancelled:
+                return Text::t ("cancelada");
+
+            case Fingerprint::State::failed:
+                break;
+        }
+
+        switch (failure)
+        {
+            case Fingerprint::Failure::fileNotFound:
+                return Text::t ("arquivo ausente");
+            case Fingerprint::Failure::unsupportedFormat:
+                return Text::t ("formato inválido");
+            case Fingerprint::Failure::noChannels:
+                return Text::t ("sem canais");
+            case Fingerprint::Failure::sampleRateTooLow:
+                return Text::t ("amostragem baixa");
+            case Fingerprint::Failure::tooShort:
+                return Text::t ("áudio curto");
+            case Fingerprint::Failure::readFailed:
+                return Text::t ("falha na leitura");
+            case Fingerprint::Failure::emptyFingerprint:
+                return Text::t ("impressão vazia");
+            case Fingerprint::Failure::algorithmFailed:
+            case Fingerprint::Failure::none:
+            default:
+                return Text::t ("falha");
+        }
+    }
+
+    static juce::String buildNotice (bool hasTitle, bool hasIsrc, bool hasYear, bool hasBpm,
+                                     Fingerprint::State idState)
+    {
+        if (! hasTitle && ! hasIsrc && ! hasYear && ! hasBpm
+            && idState == Fingerprint::State::idle)
+            return Text::t ("Carregue um arquivo de áudio para ler a ficha.");
+
+        // Impressão digital pronta é informação que o usuário precisa, e o
+        // aviso é o único lugar com espaço para dizer com precisão o que ela
+        // significa — e o que ainda não significa.
+        if (idState == Fingerprint::State::ready)
+            return Text::t ("Impressão digital calculada localmente. Cruzá-la com o "
+                            "AcoustID exige rede e ainda não está habilitado.");
+
+        if (hasIsrc && hasTitle && hasYear)
+            return {};
+
+        return Text::t ("Campos sem valor não constam no arquivo. A impressão digital "
+                        "é calculada localmente; cruzá-la com o AcoustID exige rede "
+                        "e ainda não está habilitado.");
+    }
 
     juce::String title;
+    juce::String bpmEstimatedSuffix;
     RingView ring;
-    juce::Label nameLabel;
-    juce::Label keyLabel;
-    std::vector<juce::TextButton*> buttons;
-    std::vector<std::unique_ptr<juce::TextButton>> buttonOwners;
+    juce::Label titleLabel;
+    juce::Label originLabel;
+    juce::Label isrcCaption, isrcValue;
+    juce::Label yearCaption, yearValue;
+    juce::Label bpmCaption, bpmValue;
+    juce::Label idCaption, idValue;
+    juce::Label noticeLabel;
 };
 
 //==============================================================================
@@ -904,19 +1064,7 @@ public:
         };
         addAndMakeVisible (resetButton);
 
-        addAndMakeVisible (transposeTile);
         addAndMakeVisible (fileTuningTile);
-
-        styleCaption (manualLabel);
-        addAndMakeVisible (manualLabel);
-        styleSlider (manualSlider);
-        manualSlider.setRange (-12.0, 12.0, 1.0);
-        addAndMakeVisible (manualSlider);
-        styleMono (manualValue);
-        manualValue.setJustificationType (juce::Justification::centredRight);
-        addAndMakeVisible (manualValue);
-        manualAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
-            p.parameters, Parameter::transpose, manualSlider);
 
         refreshTexts();
         refreshState();
@@ -924,10 +1072,9 @@ public:
 
     void refreshTexts() override
     {
-        title = Text::t ("04 / Afinação & Transposição");
+        title = Text::t ("04 / Afinação");
         referenceCaption.setText (Text::t ("Referência · A4"), juce::dontSendNotification);
         resetButton.setButtonText (Text::t ("Restaurar 440 Hz"));
-        manualLabel.setText (Text::t ("Transposição manual (semitons)"), juce::dontSendNotification);
         repaint();
     }
 
@@ -937,24 +1084,13 @@ public:
 
         referenceValue.setText (juce::String (reference, 0) + Text::from (" Hz"), juce::dontSendNotification);
 
-        const int semitones = processor.getActiveSemitones();
-        transposeTile.setContent (Text::t ("Transposição"),
-                                  Text::format (Text::t ("{0} st"), { signedValue (semitones) }),
-                                  semitones != 0 ? Theme::signal : Theme::foreground);
-
         const double detectedHz = processor.getDetectedTuningHz();
         const auto detectedCents = static_cast<int> (std::lround (processor.getDetectedTuningCents()));
 
         fileTuningTile.setContent (Text::t ("Arquivo"),
                                    Text::format (Text::t ("A = {0} Hz ({1} cents)"),
-                                                 { juce::String (detectedHz, 1), signedValue (detectedCents) }),
+                                                 { Text::number (detectedHz, 1), signedValue (detectedCents) }),
                                    Theme::foreground);
-
-        const bool manual = processor.getCurrentInstrument() == Instrument::Manual;
-        manualSlider.setEnabled (manual);
-        manualLabel.setEnabled (manual);
-        manualValue.setEnabled (manual);
-        manualValue.setText (signedValue (processor.getManualSemitones()), juce::dontSendNotification);
     }
 
     void paint (juce::Graphics& g) override
@@ -985,21 +1121,7 @@ public:
         resetButton.setBounds (area.removeFromTop (28).removeFromLeft (150));
 
         area.removeFromTop (12);
-
-        auto tiles = area.removeFromTop (56);
-        juce::FlexBox tileRow;
-        tileRow.flexDirection = juce::FlexBox::Direction::row;
-        tileRow.items.add (juce::FlexItem (transposeTile).withFlex (1.0f).withMargin (juce::FlexItem::Margin (0, 4, 0, 0)));
-        tileRow.items.add (juce::FlexItem (fileTuningTile).withFlex (1.35f).withMargin (juce::FlexItem::Margin (0, 0, 0, 4)));
-        tileRow.performLayout (tiles);
-
-        area.removeFromTop (12);
-
-        auto manualRow = area.removeFromTop (26);
-        manualLabel.setBounds (manualRow.removeFromLeft (170));
-        manualValue.setBounds (manualRow.removeFromRight (44));
-        manualRow.removeFromRight (10);
-        manualSlider.setBounds (manualRow);
+        fileTuningTile.setBounds (area.removeFromTop (56));
     }
 
 private:
@@ -1010,14 +1132,9 @@ private:
     juce::Slider pitchSlider;
     juce::Label pitchMinLabel, pitchMaxLabel;
     juce::TextButton resetButton;
-    StatTile transposeTile;
     StatTile fileTuningTile;
-    juce::Label manualLabel;
-    juce::Slider manualSlider;
-    juce::Label manualValue;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> pitchAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> manualAttachment;
 };
 
 //==============================================================================
@@ -1063,7 +1180,7 @@ public:
         const auto empty = Text::t ("--");
 
         bpmTile.setContent (Text::t ("BPM"),
-                            hasAnalysis ? juce::String (bpm, 1) : empty,
+                            hasAnalysis ? Text::number (bpm, 1) : empty,
                             hasAnalysis ? Theme::ice : Theme::muted);
 
         meterTile.setContent (Text::t ("Assinatura"),
@@ -1162,11 +1279,11 @@ PlayScoreEditor::PlayScoreEditor (PlayScoreProcessor& p)
 
     trackPanel      = std::make_unique<TrackPanel> (*this, p);
     transportPanel  = std::make_unique<TransportPanel> (*this, p);
-    instrumentPanel = std::make_unique<InstrumentPanel> (*this, p);
+    songSheetPanel  = std::make_unique<SongSheetPanel> (*this, p);
     tuningPanel     = std::make_unique<TuningPanel> (*this, p);
     meterPanel      = std::make_unique<MeterPanel> (*this, p);
 
-    panels = { trackPanel.get(), transportPanel.get(), instrumentPanel.get(),
+    panels = { trackPanel.get(), transportPanel.get(), songSheetPanel.get(),
                tuningPanel.get(), meterPanel.get() };
 
     for (auto* panel : panels)
@@ -1175,9 +1292,13 @@ PlayScoreEditor::PlayScoreEditor (PlayScoreProcessor& p)
     styleCaption (cultureLabel);
     addAndMakeVisible (cultureLabel);
 
-    cultureSelector.addItem (Text::from ("Português"), 1);
-    cultureSelector.addItem (Text::from ("English"), 2);
-    cultureSelector.addItem (Text::from ("Español"), 3);
+    // Cultura ativa == índice da enumeração (PortugueseBR=0 ... SpanishES=3),
+    // então SelectedId = 1 + int(Culture). Os nomes vêm do Text, que é a fonte
+    // única dos rótulos; aqui não se escreve nome de idioma.
+    for (const auto culture :
+         { Text::Culture::PortugueseBR, Text::Culture::EnglishUK,
+           Text::Culture::EnglishUS, Text::Culture::SpanishES })
+        cultureSelector.addItem (Text::cultureName (culture), 1 + static_cast<int> (culture));
     cultureSelector.setSelectedId (1 + static_cast<int> (Text::getCulture()), juce::dontSendNotification);
     cultureSelector.onChange = [this]
     {
@@ -1252,10 +1373,10 @@ void PlayScoreEditor::resized()
 
     {
         const int total = rightColumn.getHeight() - gap * 2;
-        const int instrumentHeight = static_cast<int> (static_cast<float> (total) * 0.38f);
-        const int tuningHeight     = static_cast<int> (static_cast<float> (total) * 0.36f);
+        const int songSheetHeight = static_cast<int> (static_cast<float> (total) * 0.38f);
+        const int tuningHeight    = static_cast<int> (static_cast<float> (total) * 0.36f);
 
-        instrumentPanel->setBounds (rightColumn.removeFromTop (instrumentHeight));
+        songSheetPanel->setBounds (rightColumn.removeFromTop (songSheetHeight));
         rightColumn.removeFromTop (gap);
         tuningPanel->setBounds (rightColumn.removeFromTop (tuningHeight));
         rightColumn.removeFromTop (gap);

@@ -1,4 +1,4 @@
-﻿#include "FilePlayer.h"
+#include "FilePlayer.h"
 #include "TempoAnalyser.h"
 
 #include <cmath>
@@ -51,6 +51,63 @@ namespace Waveform
     }
 }
 
+namespace
+{
+    // Nomes de tag variam por contêiner. O JUCE normaliza o ID3 de forma
+    // razoável, mas MP4/M4A usa os códigos atômicos e Vorbis/FLAC usa nomes
+    // livres — por isso cada campo lista os apelidos em vez de um só.
+    juce::String firstTagValue (const juce::StringPairArray& values,
+                                std::initializer_list<const char*> keys)
+    {
+        // operator[] devolve string vazia para chave ausente, e a busca ignora
+        // maiusculas — que e o que queremos, porque gravadores de tag discordam
+        // sobre "Title" vs "TITLE".
+        for (auto* key : keys)
+        {
+            const auto value = values[juce::String (key)].trim();
+
+            if (value.isNotEmpty())
+                return value;
+        }
+
+        return {};
+    }
+
+    // ISRC vem como "BR-ABC-12-34567" ou colado ("BRABC1234567"). Guardamos o
+    // formato colado, que é o canônico, e a apresentação com hífen é só UI.
+    juce::String normaliseIsrc (const juce::String& raw)
+    {
+        return raw.replaceCharacters ("- ", "").toUpperCase();
+    }
+
+    // O ano costuma vir como data completa ("1985-06-30", "1985"). Fica só o
+    // ano; o resto é informação de lançamento que pertence à busca online.
+    juce::String extractYear (const juce::String& raw)
+    {
+        if (raw.isEmpty())
+            return {};
+
+        const auto trimmed = raw.trim();
+        for (int i = 0; i < juce::jmin (4, trimmed.length()); ++i)
+            if (! juce::CharacterFunctions::isDigit (trimmed[i]))
+                return {};
+
+        return trimmed.substring (0, 4);
+    }
+}
+
+void FilePlayer::readTags (const juce::AudioFormatReader& reader)
+{
+    const auto& values = reader.metadataValues;
+
+    // O codigo atomico MP4 de copyright e' "©nam"/"©day" (U+00A9). As
+    // sequencias \x sao separadas por concatenacao de literais porque "\xA9d"
+    // seria lido como um unico escape de 4 digitos e estouraria o intervalo.
+    taggedTitle = firstTagValue (values, { "TITLE", "TIT2", "INAM", "\xC2\xA9" "nam" });
+    taggedIsrc  = normaliseIsrc (firstTagValue (values, { "ISRC", "TSRC" }));
+    taggedYear  = extractYear (firstTagValue (values, { "DATE", "YEAR", "ICRD", "TYER", "\xC2\xA9" "day" }));
+}
+
 void FilePlayer::loadFromFile (const juce::File& file)
 {
     jassert (! file.isDirectory());
@@ -72,13 +129,15 @@ void FilePlayer::loadFromFile (const juce::File& file)
         return;
 
     audioBuffer      = std::move (newBuffer);
-    playbackBuffer.reset();
+    std::atomic_store (&playbackBuffer, std::shared_ptr<const juce::AudioBuffer<float>>());
     peaks            = Waveform::build (*audioBuffer, 2048);
-    appliedDurationScale = 1.0;
+    appliedDurationScale.store (1.0, std::memory_order_relaxed);
     fileSampleRate   = reader->sampleRate;
     sourceFileName   = file.getFileName();
     fileSizeBytes    = file.getSize();
     durationSeconds  = fileSampleRate > 0.0 ? (double) reader->lengthInSamples / fileSampleRate : 0.0;
+
+    readTags (*reader);
 
     runTempoAnalysis();
 }
@@ -86,20 +145,21 @@ void FilePlayer::loadFromFile (const juce::File& file)
 void FilePlayer::clear()
 {
     audioBuffer.reset();
-    playbackBuffer.reset();
+    std::atomic_store (&playbackBuffer, std::shared_ptr<const juce::AudioBuffer<float>>());
     peaks.reset();
-    appliedDurationScale = 1.0;
+    appliedDurationScale.store (1.0, std::memory_order_relaxed);
     fileSampleRate = 0.0;
     sourceFileName.clear();
     fileSizeBytes = 0;
+    taggedTitle.clear();
+    taggedIsrc.clear();
+    taggedYear.clear();
     estimatedBpm = 0.0;
     beatsPerBar = 4;
     detectedTuningHz = Tuning::defaultReferenceHz;
     durationSeconds = 0.0;
     measures = 0;
-    loopEnabled = false;
-    loopStartMeasure = 1;
-    loopEndMeasure = 1;
+    setLoop (false, 1, 1);
 }
 
 void FilePlayer::runTempoAnalysis()
@@ -129,7 +189,8 @@ void FilePlayer::runTempoAnalysis()
 
 double FilePlayer::getPlaybackDurationSeconds() const noexcept
 {
-    const auto& active = (playbackBuffer != nullptr) ? playbackBuffer : audioBuffer;
+    const auto transformed = std::atomic_load (&playbackBuffer);
+    const auto& active = (transformed != nullptr) ? transformed : audioBuffer;
 
     if (active == nullptr || fileSampleRate <= 0.0)
         return 0.0;
@@ -142,43 +203,55 @@ bool FilePlayer::getLoopFractions (double& startFraction, double& endFraction) c
     startFraction = 0.0;
     endFraction   = 0.0;
 
-    if (! loopEnabled || estimatedBpm <= 0.0)
+    if (! loopEnabled.load (std::memory_order_relaxed) || estimatedBpm <= 0.0)
         return false;
 
-    const auto& active = (playbackBuffer != nullptr) ? playbackBuffer : audioBuffer;
+    const auto transformed = std::atomic_load (&playbackBuffer);
+    const auto& active = (transformed != nullptr) ? transformed : audioBuffer;
 
     if (active == nullptr || active->getNumSamples() <= 0 || fileSampleRate <= 0.0)
         return false;
 
-    const double measureSamples = (beatsPerBar * 60.0 / estimatedBpm) * appliedDurationScale * fileSampleRate;
+    const double measureSamples = (beatsPerBar * 60.0 / estimatedBpm)
+                                  * appliedDurationScale.load (std::memory_order_relaxed) * fileSampleRate;
 
     if (measureSamples <= 0.0)
         return false;
 
     const double total = static_cast<double> (active->getNumSamples());
+    const int firstMeasure = loopStartMeasure.load (std::memory_order_relaxed);
+    const int lastMeasure  = loopEndMeasure.load (std::memory_order_relaxed);
 
-    startFraction = juce::jlimit (0.0, 1.0, ((loopStartMeasure - 1) * measureSamples) / total);
-    endFraction   = juce::jlimit (0.0, 1.0, (static_cast<double> (loopEndMeasure) * measureSamples) / total);
+    startFraction = juce::jlimit (0.0, 1.0, ((firstMeasure - 1) * measureSamples) / total);
+    endFraction   = juce::jlimit (0.0, 1.0, (static_cast<double> (lastMeasure) * measureSamples) / total);
 
     return endFraction > startFraction;
 }
 
 bool FilePlayer::fillOutput (juce::AudioBuffer<float>& dest,
                              juce::int64 hostStartSample,
-                             double hostSampleRate)
+                             double hostSampleRate) const
 {
     if (fileSampleRate <= 0.0 || hostSampleRate <= 0.0)
         return false;
+
+    // Snapshot do buffer transformado. A cópia do shared_ptr é o que garante que
+    // a thread de mensagem possa trocar o ponteiro a qualquer momento sem que o
+    // áudio leia memória liberada: enquanto `transformed` estiver vivo aqui, o
+    // objeto está vivo. atomic_load é a única região sincronizada — o laço de
+    // amostras abaixo roda inteiramente fora dela.
+    const auto transformed = std::atomic_load (&playbackBuffer);
 
     // Quando há buffer de reprodução disponível (transposto/esticado), toca-o;
     // caso contrário, usa o original. O buffer de reprodução tem o mesmo sample
     // rate do arquivo e o mapeamento transport->amostra permanece 1:1 (a duração
     // escalada já está embutida no conteúdo), preservando a sincronia.
-    const auto* source = playbackBuffer != nullptr ? playbackBuffer.get() : audioBuffer.get();
+    const auto* source = transformed != nullptr ? transformed.get() : audioBuffer.get();
 
     if (source == nullptr)
         return false;
 
+    const double scale = appliedDurationScale.load (std::memory_order_relaxed);
     const int numOut = dest.getNumSamples();
     if (numOut <= 0)
         return true;
@@ -188,11 +261,11 @@ bool FilePlayer::fillOutput (juce::AudioBuffer<float>& dest,
     double srcPos = static_cast<double> (hostStartSample) * interpStep;
 
     // Loop de treino: repete o trecho entre os compassos [início, fim].
-    if (loopEnabled && estimatedBpm > 0.0)
+    if (loopEnabled.load (std::memory_order_relaxed) && estimatedBpm > 0.0)
     {
-        const double measureSamples = (beatsPerBar * 60.0 / estimatedBpm) * appliedDurationScale * fileSampleRate;
-        const auto loopStart = static_cast<juce::int64> (std::lround ((loopStartMeasure - 1) * measureSamples));
-        const auto loopEnd   = static_cast<juce::int64> (std::lround (static_cast<double> (loopEndMeasure) * measureSamples));
+        const double measureSamples = (beatsPerBar * 60.0 / estimatedBpm) * scale * fileSampleRate;
+        const auto loopStart = static_cast<juce::int64> (std::lround ((loopStartMeasure.load (std::memory_order_relaxed) - 1) * measureSamples));
+        const auto loopEnd   = static_cast<juce::int64> (std::lround (static_cast<double> (loopEndMeasure.load (std::memory_order_relaxed)) * measureSamples));
         const auto loopLen   = loopEnd - loopStart;
 
         if (loopStart >= 0 && loopLen > static_cast<juce::int64> (fileSampleRate / 4.0))

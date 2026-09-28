@@ -8,7 +8,7 @@
 class PlayScoreProcessor;
 class TrackPanel;
 class TransportPanel;
-class InstrumentPanel;
+class SongSheetPanel;
 class TuningPanel;
 class MeterPanel;
 
@@ -60,7 +60,6 @@ public:
 
 private:
     void timerCallback() override;
-    void rebuildInstrumentList();
     void refreshAllTexts();
     void refreshAllState();
     juce::Rectangle<int> headerArea() const;
@@ -73,7 +72,7 @@ private:
 
     std::unique_ptr<TrackPanel>      trackPanel;
     std::unique_ptr<TransportPanel>  transportPanel;
-    std::unique_ptr<InstrumentPanel> instrumentPanel;
+    std::unique_ptr<SongSheetPanel>  songSheetPanel;
     std::unique_ptr<TuningPanel>     tuningPanel;
     std::unique_ptr<MeterPanel>      meterPanel;
 
