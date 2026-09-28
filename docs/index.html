@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PartePlay · Practice along, in sync</title>
+<meta name="description" content="PartePlay is a free, open-source VST3 plugin that plays a reference recording locked to your notation or DAW transport — with training speed, bar looping and a local audio fingerprint.">
+<style>
+:root {
+  --bg: #040e1a; --panel: #051827; --panel2: #0a2036; --line: #15324a;
+  --text: #d7e3f0; --muted: #8aa3ba; --accent: #5fd0ff; --good: #7fe0a8;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: radial-gradient(1200px 800px at 20% -10%, #0a2740 0%, var(--bg) 55%) fixed;
+  color: var(--text); font: 16px/1.6 "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 960px; margin: 0 auto; padding: 48px 20px 80px; }
+header { text-align: center; padding: 24px 0 8px; }
+.badge { display: inline-block; margin: 4px; }
+h1 { font-size: 42px; letter-spacing: .5px; margin: 8px 0 4px; }
+h1 span { color: var(--accent); }
+.tag { color: var(--muted); font-size: 17px; max-width: 640px; margin: 8px auto 18px; }
+.lead {
+  background: linear-gradient(180deg, var(--panel), var(--panel2)); border: 1px solid var(--line);
+  border-radius: 14px; padding: 22px 26px; margin: 28px 0; font-size: 17px;
+}
+h2 { font-size: 22px; margin: 34px 0 12px; color: var(--accent); }
+p { margin: 10px 0; }
+a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+.card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px;
+}
+.card strong { color: var(--good); display: block; margin-bottom: 4px; }
+.card p { color: var(--muted); margin: 0; font-size: 15px; }
+ol, ul { margin: 10px 0 10px 22px; }
+li { margin: 4px 0; color: var(--muted); }
+code {
+  background: #081527; border: 1px solid var(--line); border-radius: 6px;
+  padding: 1px 7px; font: 13px/1.5 Consolas, "Cascadia Mono", monospace; color: #bfe6ff;
+}
+pre {
+  background: #081527; border: 1px solid var(--line); border-radius: 10px;
+  padding: 14px 16px; overflow-x: auto; margin: 10px 0;
+}
+pre code { border: 0; padding: 0; }
+table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 15px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+th { color: var(--accent); }
+.notice { border-left: 3px solid var(--accent); background: var(--panel); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 18px 0; }
+footer { margin-top: 48px; border-top: 1px solid var(--line); padding-top: 18px; color: var(--muted); font-size: 14px; text-align: center; }
+@media (max-width: 560px) { h1 { font-size: 32px; } body { font-size: 15px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div>
+    <span class="badge"><img alt="Version" src="https://img.shields.io/badge/version-0.1.0-blue"></span>
+    <span class="badge"><img alt="Format" src="https://img.shields.io/badge/format-VST3-ff5722"></span>
+    <span class="badge"><img alt="Host" src="https://img.shields.io/badge/host-MuseScore%204%20%2F%20DAW-8a2be2"></span>
+    <span class="badge"><img alt="JUCE" src="https://img.shields.io/badge/JUCE-9.0.2-3d2b8a"></span>
+    <span class="badge"><img alt="Tests" src="https://img.shields.io/badge/tests-313%20checks%20%E2%9C%85-4c9a2c"></span>
+    <span class="badge"><img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0-lightgrey"></span>
+    <span class="badge"><img alt="CI" src="https://github.com/rubenslyra/parteplay/actions/workflows/ci.yml/badge.svg"></span>
+  </div>
+  <h1>Parte<span>Play</span></h1>
+  <p class="tag">Practice along with the real performance — locked to your score's transport.</p>
+</header>
+
+<div class="lead">
+  <strong>Free, open-source VST3.</strong> Load a reference recording (WAV, FLAC, OGG, MP3) and
+  PartePlay plays it <em>in sync with the host transport</em>: play, pause, seek, rewind — never
+  drifts, never needs manual re-alignment. Slow it to 50%, loop a passage, and confirm the tuning
+  of the file with one glance. Fully localized in four languages, and fingerprints the file
+  offline.
+</div>
+
+<h2>Why it exists</h2>
+<p>
+A metronome keeps time, but a real performance keeps <em>music</em>. The problem is keeping a
+reference recording aligned with the score while you practice in pieces — restarting, looping,
+stopping. PartePlay treats the audio as a <strong>score follower that obeys the host clock</strong>
+instead of its own, so the alignment problem disappears.
+</p>
+
+<h2>What it does today</h2>
+<div class="grid">
+  <div class="card"><strong>Host-locked playback</strong><p>Audio position derives from the DAW/notation transport (<code>timeInSamples</code>). No internal clock to drift.</p></div>
+  <div class="card"><strong>Training mode</strong><p>Speed 50–150% plus bar-based looping aligned to the detected meter — with sync preserved.</p></div>
+  <div class="card"><strong>Tuning reference</strong><p>Detects the file's tuning (Hz) and compensates against your reference (432–445 Hz, default 440). Ratio 1.0 plays the original buffer untouched.</p></div>
+  <div class="card"><strong>Tempo analysis</strong><p>BPM, meter (3/4 or 4/4), bar count and tuning, with MIDI 1.0 time-map export for MuseScore and DAWs.</p></div>
+  <div class="card"><strong>Offline fingerprint</strong><p>Computes an AcoustID-compatible fingerprint locally (Chromaprint). No cloud, no key in the binary. Online lookup intentionally off in v0.1.0.</p></div>
+  <div class="card"><strong>Four locales</strong><p>pt-BR · en-GB · en-US · es-ES, switchable in the editor. Numbers use each locale's decimal separator.</p></div>
+</div>
+
+<h2>Install</h2>
+<ol>
+  <li>Close MuseScore (or your DAW) — the binary is locked while the plugin is loaded.</li>
+  <li>Run the installer script (download the release or build it first).</li>
+  <li>Install the optional MuseScore notation template.</li>
+  <li>Add <code>PartePlay.vst3</code> as an <strong>effect</strong>, load your audio, confirm the BPM/bar count — play.</li>
+</ol>
+
+<h2>Build from source</h2>
+<pre><code>cmake --preset msvc
+cmake --build --preset msvc --config Release
+ctest --preset msvc    # 313 checks, 0 failures</code></pre>
+<p>Presets also cover <code>ninja</code>, <code>linux</code>, <code>macos</code> and
+<code>macos-universal</code> (x86_64 + arm64). Requires CMake 3.22+, VC++ 2022, and JUCE 9.0.2
+(at <code>JUCE_ROOT</code>).</p>
+
+<h2>Parameters</h2>
+<table>
+  <tr><th>ID</th><th>Range / options</th><th>Default</th></tr>
+  <tr><td><code>referencePitch</code></td><td>432.0 – 445.0 Hz</td><td>440.0</td></tr>
+  <tr><td><code>trainingSpeed</code></td><td>0.50 – 1.50</td><td>1.00</td></tr>
+  <tr><td><code>loopEnabled</code></td><td>on / off</td><td>false</td></tr>
+  <tr><td><code>loopStart</code>/<code>loopEnd</code></td><td>1 – 10000 (bar)</td><td>1</td></tr>
+  <tr><td><code>muted</code></td><td>on / off</td><td>false</td></tr>
+</table>
+
+<div class="notice">
+  <strong>No transpose, no instrument table.</strong> PartePlay deliberately does <em>not</em>
+  transpose the track or fake host transport messages — host locking and honest metadata are the
+  product. Transposition belongs to the notation, not to the reference audio.
+</div>
+
+<h2>Contribute</h2>
+<p>
+Conventions, the test gate and the PR contract live in
+<a href="https://github.com/rubenslyra/parteplay/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>.
+Every PR must pass the 313-check suite on three platforms and carry a <code>Signed-off-by</code>
+(DCO). All UI strings go through the four-column locale table.
+</p>
+
+<footer>
+  <p><a href="https://github.com/rubenslyra/parteplay">github.com/rubenslyra/parteplay</a> · AGPL-3.0 · built with JUCE 9</p>
+</footer>
+
+</div>
+</body>
+</html>
