@@ -26,6 +26,11 @@ jobs:
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
+        with:
+          # Habilita o Pages no repositório no primeiro deploy, em vez de
+          # depender de alguém clicar em Settings > Pages > GitHub Actions.
+          # Falha sem efeito se o Pages já estiver habilitado.
+          enablement: true
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
