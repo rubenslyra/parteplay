@@ -105,6 +105,10 @@ jobs:
           key: juce-${{ runner.os }}-${{ needs.metadata.outputs.juce_tag }}
 
       - name: Obter JUCE
+        # shell: bash explicito. Sem isto o runner do Windows executa o passo em
+        # PowerShell, onde a continuacao de linha com "\" vira argumento e o clone
+        # falha com "repository '\' does not exist".
+        shell: bash
         run: |
           git clone --depth 1 --branch "${{ needs.metadata.outputs.juce_tag }}" \
             https://github.com/juce-framework/JUCE.git .juce-deps/JUCE
@@ -116,9 +120,23 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libfreetype6-dev libx11-dev \
-                                 libxinerama-dev libxrandr-dev libxcursor-dev \
+          sudo apt-get install -y libasound2-dev libfreetype-dev libfontconfig1-dev \
+                                 libx11-dev libxinerama-dev libxrandr-dev libxcursor-dev \
                                  libxcomposite-dev libcurl4-openssl-dev
+          # O juceaide e compilado por um CMake recursivo (extras/Build/juceaide)
+          # que roda durante o configure do projeto principal. Esse projeto
+          # interno nao herda os include dirs que o CMake calcula para os alvos do
+          # projeto, entao o pkg-config do juce_graphics nao chega ate ele e
+          # juce_graphics_Harfbuzz.cpp morre em "ft2build.h not found". O
+          # bootstrap herda o ambiente, e o compilador le CPLUS_INCLUDE_PATH.
+          freetype_cflags=$(pkg-config --cflags freetype2 2>/dev/null || true)
+          if [ -n "$freetype_cflags" ]; then
+            incs=$(echo "$freetype_cflags" | tr ' ' '\n' | sed -n 's/^-I//p' | paste -sd: -)
+            echo "CPLUS_INCLUDE_PATH=$incs" >> "$GITHUB_ENV"
+            echo "CPLUS_INCLUDE_PATH para o bootstrap do juceaide: $incs"
+          else
+            echo "::warning::pkg-config nao achou freetype2; o build do juceaide pode falhar"
+          fi
 
       - name: Cache de build
         uses: actions/cache@v4
@@ -188,6 +206,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Obter JUCE
+        # shell: bash explicito. Sem isto o runner do Windows executa o passo em
+        # PowerShell, onde a continuacao de linha com "\" vira argumento e o clone
+        # falha com "repository '\' does not exist".
+        shell: bash
         run: |
           git clone --depth 1 --branch "${{ needs.metadata.outputs.juce_tag }}" \
             https://github.com/juce-framework/JUCE.git .juce-deps/JUCE
