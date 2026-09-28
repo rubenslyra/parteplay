@@ -12,29 +12,47 @@ project(PartePlay VERSION 0.1.0 LANGUAGES C CXX)
 set(PARTEPLAY_JUCE_VERSION "9.0.2" CACHE STRING
     "Versao da JUCE usada na build local e na CI")
 
-# A JUCE nao e dependencia versionada pelo CMake. O caminho default e o da
-# instalacao oficial desta maquina e NAO funciona em Linux/macOS, onde a CI
-# passa -DJUCE_ROOT=<checkout>. Por isso o default e sobrescrito por condicao
-# de plataforma: um path com barra invertida e espaco seria aceito pelo
-# configure e so falharia depois, no meio do build.
-if(WIN32)
-    set(PartePlayDefaultJuceRoot "D:/Program Files/JUCE")
+# A JUCE nao e dependencia versionada pelo CMake. A precedencia e
+# 1) variavel de ambiente JUCE_ROOT, 2) -DJUCE_ROOT do cache, 3) o default da
+# plataforma. O default do Windows e o da instalacao oficial desta maquina e NAO
+# existe em Linux/macOS nem em nenhum runner de CI, entao ele so entra como
+# ultimo recurso e avisa: um path aceito pelo configure e so falharia depois, no
+# meio do build. Um path com barra invertida e espaco e o pior caso, porque o
+# shell o quebra em duas partes.
+if(DEFINED ENV{JUCE_ROOT} AND NOT "$ENV{JUCE_ROOT}" STREQUAL "")
+    set(PartePlayJuceRoot "$ENV{JUCE_ROOT}")
+    set(PartePlayJuceRootOrigin "variavel de ambiente JUCE_ROOT")
 else()
-    set(PartePlayDefaultJuceRoot "$ENV{JUCE_ROOT}")
+    set(PartePlayJuceRoot "")
+    set(PartePlayJuceRootOrigin "nenhuma")
 endif()
 
-if(NOT PartePlayDefaultJuceRoot)
+if(PartePlayJuceRoot STREQUAL "" AND WIN32)
+    set(PartePlayJuceRoot "D:/Program Files/JUCE")
+    set(PartePlayJuceRootOrigin "default do Windows desta maquina")
+endif()
+
+if(PartePlayJuceRoot STREQUAL "")
     message(FATAL_ERROR
         "JUCE_ROOT nao definido. Passe -DJUCE_ROOT=<caminho para o checkout da JUCE 9>, "
         "ou exporte a variavel de ambiente JUCE_ROOT.")
 endif()
 
-set(JUCE_ROOT "${PartePlayDefaultJuceRoot}" CACHE PATH
+set(JUCE_ROOT "${PartePlayJuceRoot}" CACHE PATH
     "Path to the JUCE framework source")
 
 if(NOT EXISTS "${JUCE_ROOT}/CMakeLists.txt")
     message(FATAL_ERROR
-        "JUCE_ROOT invalido: '${JUCE_ROOT}/CMakeLists.txt' nao existe.")
+        "JUCE_ROOT invalido: '${JUCE_ROOT}/CMakeLists.txt' nao existe. "
+        "Origem do valor: ${PartePlayJuceRootOrigin}.")
+endif()
+
+message(STATUS "JUCE_ROOT: ${JUCE_ROOT} (origem: ${PartePlayJuceRootOrigin})")
+
+if(PartePlayJuceRootOrigin STREQUAL "default do Windows desta maquina")
+    message(WARNING
+        "JUCE_ROOT veio do default fixo desta maquina. Em CI e em qualquer outra "
+        "maquina isso nao existe: exporte JUCE_ROOT ou passe -DJUCE_ROOT.")
 endif()
 
 add_subdirectory("${JUCE_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/juce" EXCLUDE_FROM_ALL)

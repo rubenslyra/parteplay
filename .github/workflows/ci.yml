@@ -110,9 +110,23 @@ jobs:
         # falha com "repository '\' does not exist".
         shell: bash
         run: |
-          git clone --depth 1 --branch "${{ needs.metadata.outputs.juce_tag }}" \
-            https://github.com/juce-framework/JUCE.git .juce-deps/JUCE
-          echo "JUCE_ROOT=$PWD/.juce-deps/JUCE" >> "$GITHUB_ENV"
+          # Idempotente: o cache acima pode ter restaurado o checkout, e um
+          # "git clone" em diretorio nao vazio aborta com exit 128.
+          if [ -f .juce-deps/JUCE/CMakeLists.txt ]; then
+            echo "JUCE restaurado do cache"
+          else
+            git clone --depth 1 --branch "${{ needs.metadata.outputs.juce_tag }}" \
+              https://github.com/juce-framework/JUCE.git .juce-deps/JUCE
+          fi
+          # No Windows o runner, $PWD e um path POSIX (/d/a/...) e o $GITHUB_ENV
+          # vem com barras invertidas: redirecionar para ele direto em bash cria
+          # um arquivo de nome corrompido e a variavel nunca chega ao CMake.
+          # cygpath converte os dois lados.
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            echo "JUCE_ROOT=$(cygpath -m "$PWD/.juce-deps/JUCE")" >> "$(cygpath -u "$GITHUB_ENV")"
+          else
+            echo "JUCE_ROOT=$PWD/.juce-deps/JUCE" >> "$GITHUB_ENV"
+          fi
 
       # Linux e macOS nao tem o toolchain de audio do JUCE instalado por
       # padrao. Sem ALSA o configure do juce_audio_utils falha.
@@ -122,7 +136,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libasound2-dev libfreetype-dev libfontconfig1-dev \
                                  libx11-dev libxinerama-dev libxrandr-dev libxcursor-dev \
-                                 libxcomposite-dev libcurl4-openssl-dev
+                                 libxcomposite-dev libxext-dev libxfixes-dev libxi-dev \
+                                 libxrender-dev libgl1-mesa-dev libcurl4-openssl-dev
           # O juceaide e compilado por um CMake recursivo (extras/Build/juceaide)
           # que roda durante o configure do projeto principal. Esse projeto
           # interno nao herda os include dirs que o CMake calcula para os alvos do
@@ -211,9 +226,23 @@ jobs:
         # falha com "repository '\' does not exist".
         shell: bash
         run: |
-          git clone --depth 1 --branch "${{ needs.metadata.outputs.juce_tag }}" \
-            https://github.com/juce-framework/JUCE.git .juce-deps/JUCE
-          echo "JUCE_ROOT=$PWD/.juce-deps/JUCE" >> "$GITHUB_ENV"
+          # Idempotente: o cache acima pode ter restaurado o checkout, e um
+          # "git clone" em diretorio nao vazio aborta com exit 128.
+          if [ -f .juce-deps/JUCE/CMakeLists.txt ]; then
+            echo "JUCE restaurado do cache"
+          else
+            git clone --depth 1 --branch "${{ needs.metadata.outputs.juce_tag }}" \
+              https://github.com/juce-framework/JUCE.git .juce-deps/JUCE
+          fi
+          # No Windows o runner, $PWD e um path POSIX (/d/a/...) e o $GITHUB_ENV
+          # vem com barras invertidas: redirecionar para ele direto em bash cria
+          # um arquivo de nome corrompido e a variavel nunca chega ao CMake.
+          # cygpath converte os dois lados.
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            echo "JUCE_ROOT=$(cygpath -m "$PWD/.juce-deps/JUCE")" >> "$(cygpath -u "$GITHUB_ENV")"
+          else
+            echo "JUCE_ROOT=$PWD/.juce-deps/JUCE" >> "$GITHUB_ENV"
+          fi
 
       - name: Build universal
         run: |
