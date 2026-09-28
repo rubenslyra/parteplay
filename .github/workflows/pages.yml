@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths: [docs/**]
+  workflow_dispatch: # permite republicar sem editar docs/
 
 permissions:
   contents: read
