@@ -23,8 +23,8 @@ namespace
     {
         // Cabeçalho
         { "PartePlay",                                  "PartePlay",                              "PartePlay",                              "PartePlay" },
-        { "Espaço de trabalho do áudio de referência",  "Reference audio workspace",              "Reference audio workspace",              "Espacio de trabajo del audio de referencia" },
-        { "VST3 · Transporte escravo",                  "VST3 · Slave transport",                 "VST3 · Slave transport",                 "VST3 · Transporte esclavo" },
+        { "ESPAÇO DE TRABALHO DO ÁUDIO DE REFERÊNCIA",  "REFERENCE AUDIO WORKSPACE",              "REFERENCE AUDIO WORKSPACE",              "ESPACIO DE TRABAJO DEL AUDIO DE REFERENCIA" },
+        { "VST3",                                       "VST3",                                   "VST3",                                   "VST3" },
         { "Idioma:",                                    "Language:",                              "Language:",                              "Idioma:" },
 
         // 01 — Faixa
@@ -98,12 +98,10 @@ namespace
         { "A = {0} Hz ({1} cents)",                     "A = {0} Hz ({1} cents)",                 "A = {0} Hz ({1} cents)",                 "A = {0} Hz ({1} cents)" },
 
         // 05 — BPM e métrica
-        { "05 / BPM & Métrica",                         "05 / BPM & Meter",                       "05 / BPM & Meter",                       "05 / BPM y métrica" },
+        { "05 / BPM & Compassos",                       "05 / BPM & Bars",                        "05 / BPM & Bars",                        "05 / BPM y compases" },
         { "BPM",                                        "BPM",                                    "BPM",                                    "BPM" },
-        { "Assinatura",                                 "Time signature",                         "Time signature",                         "Compás" },
         { "Compassos",                                  "Bars",                                   "Bars",                                   "Compases" },
         { "Duração",                                    "Duration",                               "Duration",                               "Duración" },
-        { "{0}/4",                                      "{0}/4",                                  "{0}/4",                                  "{0}/4" },
         { "--",                                         "--",                                     "--",                                     "--" },
         { "Exportar Mapa (.mid)",                       "Export Tempo Map (.mid)",                "Export Tempo Map (.mid)",                "Exportar mapa (.mid)" },
         { "Exportar mapa de tempo (MIDI)",              "Export tempo map (MIDI)",                "Export tempo map (MIDI)",                "Exportar mapa de tempo (MIDI)" },

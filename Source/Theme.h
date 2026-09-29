@@ -39,8 +39,9 @@ namespace Theme
 
     inline juce::Font font (float height, bool bold = false)
     {
-        return juce::Font (juce::FontOptions (height, bold ? juce::Font::bold
-                                                           : juce::Font::plain));
+        return juce::Font (juce::FontOptions (juce::Font::getDefaultSansSerifFontName(),
+                                              height,
+                                              bold ? juce::Font::bold : juce::Font::plain));
     }
 
     inline juce::Font monoFont (float height, bool bold = false)

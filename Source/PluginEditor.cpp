@@ -1145,7 +1145,6 @@ public:
         : EditorPanel (p), editor (owner)
     {
         addAndMakeVisible (bpmTile);
-        addAndMakeVisible (meterTile);
         addAndMakeVisible (barsTile);
         addAndMakeVisible (durationTile);
 
@@ -1166,7 +1165,7 @@ public:
 
     void refreshTexts() override
     {
-        title = Text::t ("05 / BPM & Métrica");
+        title = Text::t ("05 / BPM & Compassos");
         exportButton.setButtonText (Text::t ("Exportar Mapa (.mid)"));
         noteLabel.setText (Text::t ("Estimado do áudio — sugestão; a métrica do hospedeiro é a definitiva."),
                            juce::dontSendNotification);
@@ -1182,12 +1181,6 @@ public:
         bpmTile.setContent (Text::t ("BPM"),
                             hasAnalysis ? Text::number (bpm, 1) : empty,
                             hasAnalysis ? Theme::ice : Theme::muted);
-
-        meterTile.setContent (Text::t ("Assinatura"),
-                              hasAnalysis ? Text::format (Text::t ("{0}/4"),
-                                                          { juce::String (processor.getBeatsPerBar()) })
-                                          : empty,
-                              hasAnalysis ? Theme::foreground : Theme::muted);
 
         barsTile.setContent (Text::t ("Compassos"),
                              hasAnalysis ? juce::String (processor.getMeasureCount()) : empty,
@@ -1210,21 +1203,15 @@ public:
     {
         auto area = contentArea();
 
-        auto firstRow = area.removeFromTop (56);
-        auto secondRow = area.removeFromTop (56);
+        auto tilesRow = area.removeFromTop (56);
         area.removeFromTop (12);
 
-        juce::FlexBox row1;
-        row1.flexDirection = juce::FlexBox::Direction::row;
-        row1.items.add (juce::FlexItem (bpmTile).withFlex (1.0f).withMargin (juce::FlexItem::Margin (0, 4, 6, 0)));
-        row1.items.add (juce::FlexItem (meterTile).withFlex (1.0f).withMargin (juce::FlexItem::Margin (0, 0, 6, 4)));
-        row1.performLayout (firstRow);
-
-        juce::FlexBox row2;
-        row2.flexDirection = juce::FlexBox::Direction::row;
-        row2.items.add (juce::FlexItem (barsTile).withFlex (1.0f).withMargin (juce::FlexItem::Margin (0, 4, 0, 0)));
-        row2.items.add (juce::FlexItem (durationTile).withFlex (1.0f).withMargin (juce::FlexItem::Margin (0, 0, 0, 4)));
-        row2.performLayout (secondRow);
+        juce::FlexBox row;
+        row.flexDirection = juce::FlexBox::Direction::row;
+        row.items.add (juce::FlexItem (bpmTile).withFlex (1.0f).withMargin (juce::FlexItem::Margin (0, 4, 0, 0)));
+        row.items.add (juce::FlexItem (barsTile).withFlex (1.0f).withMargin (juce::FlexItem::Margin (0, 4, 0, 4)));
+        row.items.add (juce::FlexItem (durationTile).withFlex (1.0f).withMargin (juce::FlexItem::Margin (0, 0, 0, 4)));
+        row.performLayout (tilesRow);
 
         area.removeFromBottom (24);
         messageLabel.setBounds (area.removeFromBottom (20));
@@ -1236,7 +1223,7 @@ public:
 private:
     PlayScoreEditor& editor;
     juce::String title;
-    StatTile bpmTile, meterTile, barsTile, durationTile;
+    StatTile bpmTile, barsTile, durationTile;
     juce::TextButton exportButton;
     juce::Label noteLabel;
     juce::Label messageLabel;
@@ -1413,7 +1400,7 @@ void PlayScoreEditor::paint (juce::Graphics& g)
 #endif
 
     const int badgeWidthState = 108;
-    const int badgeWidthMode  = 172;
+    const int badgeWidthMode  = 60;
     const int reservedRight   = 132 + 72 + 20 + badgeWidthState + badgeWidthMode + 20;
 
     auto textArea = cursor.withWidth (juce::jmax (120, cursor.getWidth() - reservedRight));
@@ -1424,7 +1411,7 @@ void PlayScoreEditor::paint (juce::Graphics& g)
 
     g.setColour (Theme::muted);
     g.setFont (Theme::font (Theme::Type::caption, true));
-    g.drawText (Text::t ("Espaço de trabalho do áudio de referência").toUpperCase(),
+    g.drawText (Text::t ("ESPAÇO DE TRABALHO DO ÁUDIO DE REFERÊNCIA"),
                 textArea.removeFromTop (16), juce::Justification::centredLeft);
 
     // Selos à direita do título.
@@ -1439,7 +1426,7 @@ void PlayScoreEditor::paint (juce::Graphics& g)
 
     badgeRight -= static_cast<float> (badgeWidthMode) + 8.0f;
     Theme::paintBadge (g, juce::Rectangle<float> (badgeRight, badgeY, static_cast<float> (badgeWidthMode), 22.0f),
-                       Text::t ("VST3 · Transporte escravo"), Theme::azure);
+                       Text::t ("VST3"), Theme::azure);
 
     // Rodapé
     const auto footer = footerArea();
