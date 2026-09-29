@@ -60,6 +60,36 @@ macos-universal`). A PR whose gate is red does not pass.
 - **Descriptive commits.** The history is read with DCO: every commit carries `Signed-off-by`.
 - **Never commit artifacts.** `build/`, heavy captures and binaries are already on `.gitignore`.
 
+### Signed commits
+
+`main` requires **cryptographically signed commits**. A DCO `Signed-off-by` trailer is a legal
+statement and is not a signature — you need both. Unsigned commits are rejected at push time.
+
+The repository expects SSH signing, which needs no extra software on any platform:
+
+```
+git config gpg.format ssh
+git config user.signingkey ~/.ssh/id_ed25519.pub    # your own key, not a shared one
+git config commit.gpgsign true
+git config tag.gpgsign true
+```
+
+Then add the matching **public** key to your GitHub account under
+*Settings → SSH and GPG keys → **Signing keys** → New SSH key*. Getting this wrong is the usual
+reason a commit shows as unverified: an *authentication* key authenticates `git push`, a *signing*
+key is what validates a commit, and GitHub does not accept one in place of the other.
+
+Check your work before pushing:
+
+```
+git log -1 --show-signature     # want "Good \"git\" signature"
+```
+
+Use a key dedicated to signing rather than the one you authenticate with. A signing key leaked from
+somebody else's clone should not let anyone commit as you. Set
+`gpg.ssh.allowedSignersFile` to a file of `email key` lines if you want `git log` to verify
+signatures locally.
+
 For a large change, open the issue first and align on the design before writing code.
 
 ## Not accepted
