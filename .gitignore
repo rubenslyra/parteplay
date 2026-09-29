@@ -59,3 +59,8 @@ secrets
 # existe a versao publica sanitizada em CONTRIBUTING.md / ARCHITECTURE.md.
 agent.md
 *.internal.md
+
+# Rascunhos de divulgacao e respostas de redes sociais: material pessoal de
+# trabalho, nunca entra no repositorio nem em release.
+linkedin-*.md
+social-*.md

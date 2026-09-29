@@ -29,6 +29,20 @@ h1 span { color: var(--accent); }
 h2 { font-size: 22px; margin: 34px 0 12px; color: var(--accent); }
 p { margin: 10px 0; }
 a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+.cta { text-align: center; margin: 30px 0 8px; }
+.btn {
+  display: inline-block; background: var(--accent); color: #041220; font-weight: 600;
+  font-size: 17px; padding: 13px 30px; border-radius: 9px; text-decoration: none;
+  transition: transform .12s ease, filter .12s ease;
+}
+.btn:hover { filter: brightness(1.08); text-decoration: none; transform: translateY(-1px); }
+.cta-note { color: var(--muted); font-size: 14px; margin: 12px 0 0; }
+.shot { margin: 26px 0 0; }
+.shot img {
+  width: 100%; height: auto; display: block; border: 1px solid var(--line);
+  border-radius: 12px; background: var(--panel);
+}
+.shot figcaption { color: var(--muted); font-size: 14px; margin-top: 10px; text-align: center; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
 .card {
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px;
@@ -79,6 +93,17 @@ footer { margin-top: 48px; border-top: 1px solid var(--line); padding-top: 18px;
   of the file with one glance. Fully localized in four languages, and fingerprints the file
   offline.
 </div>
+
+<div class="cta">
+  <a class="btn" href="https://github.com/rubenslyra/parteplay/releases">Download PartePlay VST3</a>
+  <p class="cta-note">AGPL-3.0 &middot; free and open-source &middot; VST3 for Windows, Linux and macOS</p>
+</div>
+
+<figure class="shot">
+  <img src="screenshot-vst-used.png"
+       alt="PartePlay loaded as an effect in MuseScore 4, showing the detected tempo and bar count for the loaded reference recording.">
+  <figcaption>PartePlay loaded as an effect in MuseScore 4, with the reference recording analysed and ready to play in sync with the score.</figcaption>
+</figure>
 
 <h2>Why it exists</h2>
 <p>
