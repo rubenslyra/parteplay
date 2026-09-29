@@ -21,11 +21,17 @@ DAW, supports **training speed and bar-based looping**, computes a **local audio
 
 **Version:** 0.2.0 · **Platform:** Windows 10/11, Ubuntu, macOS (CI-verified build matrix) · **Format:** VST3 · **Stack:** C++17 / JUCE 9.0.2 / CMake
 
-![PartePlay icon](PartePlay-Icon.png)
+<p align="center">
+  <img src="docs/parteplay-logo.png" width="140" alt="PartePlay">
+</p>
 
 ## Download
 
-**[⬇ Download PartePlay VST3](https://github.com/rubenslyra/parteplay/releases)**
+**v0.2.0-rc.1 — release candidate.** The plugin is free to download and test now, but it is still in
+development: expect rough edges, and please [open an issue](https://github.com/rubenslyra/parteplay/issues/new/choose)
+if something breaks. The stable release follows the RC once the feedback settles.
+
+**[⬇ Download PartePlay VST3 — v0.2.0-rc.1](https://github.com/rubenslyra/parteplay/releases/tag/v0.2.0-rc.1)**
 
 AGPL-3.0 · free and open-source · VST3 for Windows, Linux and macOS. The plugin is unsigned, so your
 host will ask you to confirm it the first time you load it — see [Install](#install).

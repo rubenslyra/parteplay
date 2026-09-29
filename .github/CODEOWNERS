@@ -1,0 +1,10 @@
+# Code owners
+#
+# Combined with "require code owner reviews" in the main branch protection, this
+# is what makes rubenslyra the only approval that counts: a review from anybody
+# else does not satisfy the requirement, so a PR cannot be merged without the
+# owner having reviewed it.
+#
+# Require signed commits is also enabled, so the owner's approval is backed by
+# a verified signature.
+* @rubenslyra
