@@ -121,6 +121,21 @@ unset(AUDIO_PROCESSOR_LIB      CACHE)
 unset(FFT_LIB                  CACHE)
 unset(KISSFFT_ROOT             CACHE)
 
+# Fonte unica da verdade da lista de arquivos. Os dois targets gerados pelo
+# juce_add_plugin (PartePlay e PartePlay_VST3) consomem esta mesma lista, para
+# que adicionar um arquivo novo nunca precise ser feito em dois lugares.
+set(PARTEPLAY_SOURCES
+    Source/PluginProcessor.cpp
+    Source/PluginEditor.cpp
+    Source/FilePlayer.cpp
+    Source/FingerprintWorker.cpp
+    Source/MidiMapExporter.cpp
+    Source/PitchShifter.cpp
+    Source/Text.cpp
+    Source/TempoAnalyser.cpp
+    Source/Tuning.cpp
+)
+
 juce_add_plugin(PartePlay
     VERSION "0.2.0"
     COMPANY_NAME "PartePlay"
@@ -140,24 +155,36 @@ juce_add_plugin(PartePlay
     ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/PartePlay-Icon.png"
 )
 
-target_sources(PartePlay PRIVATE
-    Source/PluginProcessor.cpp
-    Source/PluginEditor.cpp
-    Source/FilePlayer.cpp
-    Source/FingerprintWorker.cpp
-    Source/MidiMapExporter.cpp
-    Source/PitchShifter.cpp
-    Source/Text.cpp
-    Source/TempoAnalyser.cpp
-    Source/Tuning.cpp
-)
+# Fix para Windows: o target VST3 (PartePlay_VST3) precisa das fontes e linkar a lib estatica
+if(WIN32)
+    # O juce_add_plugin cria dois targets: PartePlay (static lib) e PartePlay_VST3 (DLL)
+    # Garantir que as fontes vao para o target VST3 tambem
+    target_sources(PartePlay_VST3 PRIVATE ${PARTEPLAY_SOURCES})
+    target_link_libraries(PartePlay_VST3 PRIVATE PartePlay juce::juce_audio_formats juce::juce_dsp chromaprint BinaryData)
+    target_include_directories(PartePlay_VST3 PRIVATE Source "${CMAKE_CURRENT_BINARY_DIR}/juce_binarydata_BinaryData/JuceLibraryCode" "${CHROMAPRINT_ROOT}/src")
+    target_compile_definitions(PartePlay_VST3 PRIVATE CHROMAPRINT_NODLL=1 JUCE_VST3_CAN_REPLACE_VST2=0)
+    if(MSVC)
+        target_compile_options(PartePlay_VST3 PRIVATE /utf-8)
+    endif()
+    
+    # Nao mexa em MSVC_LINK_OBJECTS achando que o VST3 nao linka. O CMake
+    # escreve <LinkObjects>false</LinkObjects> no .vcxproj e isso parece a causa
+    # do bug, mas o bloco onde ele aparece e um <CustomBuild> (a geracao do
+    # JuceHeader.h pelo juceaide), nao o tool Link -- e la false esta correto,
+    # porque um passo de codegen nao linka objeto nenhum. O que de fato faltava
+    # era este bloco: sem ele o target do VST3 recebia so os fontes do
+    # juce_audio_plugin_client, nenhum codigo do plugin, e o build terminava sem
+    # erro e sem binario.
+endif()
+
+target_sources(PartePlay PRIVATE ${PARTEPLAY_SOURCES})
 
 target_link_libraries(PartePlay PRIVATE juce::juce_audio_formats juce::juce_dsp chromaprint)
 
 juce_add_binary_data(BinaryData SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/PartePlay-Icon.png")
 target_link_libraries(PartePlay PRIVATE BinaryData)
 
-target_include_directories(PartePlay PRIVATE Source)
+target_include_directories(PartePlay PRIVATE Source "${CMAKE_CURRENT_BINARY_DIR}/juce_binarydata_BinaryData/JuceLibraryCode")
 
 # O target chromaprint usa include_directories() de diretorio, e nao
 # INTERFACE_INCLUDE_DIRECTORIES, entao vincular a lib nao propaga o header.
