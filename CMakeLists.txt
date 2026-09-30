@@ -201,7 +201,12 @@ if(WIN32)
     target_sources(PartePlay_VST3 PRIVATE ${PARTEPLAY_SOURCES})
     target_link_libraries(PartePlay_VST3 PRIVATE PartePlay juce::juce_audio_formats juce::juce_dsp chromaprint BinaryData)
     target_include_directories(PartePlay_VST3 PRIVATE ${PARTEPLAY_MODULE_PATHS} "${CMAKE_CURRENT_BINARY_DIR}/juce_binarydata_BinaryData/JuceLibraryCode" "${CHROMAPRINT_ROOT}/src")
-    target_compile_definitions(PartePlay_VST3 PRIVATE CHROMAPRINT_NODLL=1 JUCE_VST3_CAN_REPLACE_VST2=0)
+    # A versao mostrada na interface vem daqui, nunca de um literal no .cpp: e a
+    # CI que reprova X.Y.Z escrito em Source/, entao a macro e o unico caminho
+    # limpo entre o project(...VERSION) e o rodape do editor.
+    target_compile_definitions(PartePlay_VST3 PRIVATE CHROMAPRINT_NODLL=1 JUCE_VST3_CAN_REPLACE_VST2=0
+                                                PARTEPLAY_VERSION="${PROJECT_VERSION}")
+    target_compile_definitions(PartePlay PRIVATE PARTEPLAY_VERSION="${PROJECT_VERSION}")
     if(MSVC)
         target_compile_options(PartePlay_VST3 PRIVATE /utf-8)
     endif()

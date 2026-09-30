@@ -117,10 +117,10 @@ namespace
           "PartePlay · Made for musicians and arrangers",
           "PartePlay · Made for musicians and arrangers",
           "PartePlay · Hecho para músicos y arreglistas" },
-        { "Produção Rubinho Lyra / Software Eng",
-          "Production Rubinho Lyra / Software Eng",
-          "Production Rubinho Lyra / Software Eng",
-          "Producción Rubinho Lyra / Software Eng" },
+        { "Produção: Rubens Lyra",
+          "Production: Rubens Lyra",
+          "Production: Rubens Lyra",
+          "Producción: Rubens Lyra" },
 
         // Nomes de parâmetro (visíveis no hospedeiro)
         { "Afinação (Hz)",                              "Tuning (Hz)",                            "Tuning (Hz)",                            "Afinación (Hz)" },

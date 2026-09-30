@@ -33,8 +33,14 @@ namespace Theme
         constexpr float title    = 19.0f;
         constexpr float value    = 21.0f; // cifras isoladas (mono)
         constexpr float body     = 13.0f;
+        // Texto de controle interativo. Maior que o corpo de proposito: e a fonte
+        // do seletor de idioma e das linhas do popup dele, e o popup usa a altura
+        // do combo como altura de linha, entao mexer aqui aumenta os dois juntos.
+        constexpr float control  = 15.0f;
         constexpr float caption  = 11.0f;
-        constexpr float section  = 10.5f; // micro-rótulos em caixa alta
+        // 10,5 era o menor texto da interface e o responsavel por "nao da pra ver
+        // nada": micro-rotulo de 10,5px numa janela de 1000px e leitura forcada.
+        constexpr float section  = 12.0f; // micro-rótulos em caixa alta
     }
 
     inline juce::Font font (float height, bool bold = false)

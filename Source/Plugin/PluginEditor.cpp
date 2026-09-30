@@ -8,8 +8,34 @@
 
 #include <cmath>
 
+// Injetada pelo CMake a partir de project(...VERSION). O fallback existe para o
+// arquivo continuar compilando fora do build - e nao traz digitos de proposito:
+// a CI reprova qualquer literal X.Y.Z em Source/, que e o que mantem a versao
+// mostrada na interface amarrada a fonte unica.
+#ifndef PARTEPLAY_VERSION
+ #define PARTEPLAY_VERSION "?"
+#endif
+
 namespace
 {
+    //==============================================================================
+    // Larguras reservadas no canto direito do cabecalho, para o titulo nao
+    // invadir o seletor de idioma nem os selos. Espelham PlayScoreEditor::resized
+    // e PlayScoreEditor::paint: se um mudar sem o outro, o texto e o botao se
+    // sobrepoem em vez de o botao sumir.
+    constexpr int cultureSelectorWidth  = 220;
+    constexpr int cultureLabelWidth    = 82;
+    constexpr int cultureSelectorHeight = 38;
+
+    //==============================================================================
+    // Rodape: versao + credito. A versao vem da macro do CMake, entao trocar o
+    // project(...VERSION) troca o que aparece aqui - nao ha numero escrito no
+    // .cpp, que e o que a CI exige.
+    juce::String footerCredit()
+    {
+        return juce::String (PARTEPLAY_VERSION) + " · " + Text::t ("Produção: Rubens Lyra");
+    }
+
     //==============================================================================
     // Aparência única da interface (tokens em Theme.h).
     class StudioLookAndFeel : public juce::LookAndFeel_V4
@@ -139,7 +165,25 @@ namespace
             g.drawEllipse (thumb.reduced (0.5f), 1.0f);
         }
 
-        void drawComboBox (juce::Graphics& g, int width, int height, bool, int, int, int, int,
+        // O texto do item selecionado. Sem isto o seletor de idioma aparecia como
+        // um retangulo vazio com uma seta: a JUCE delega ao LookAndFeel o desenho
+        // do texto tambem, e o override antigo desenhava fundo, contorno e seta -
+        // e nada mais.
+        juce::Font getComboBoxFont (juce::ComboBox& box) override
+        {
+            return Theme::font (Theme::Type::control);
+        }
+
+        // O popup herda o token de controle em vez da fonte padrao da JUCE. Como a
+        // altura da linha do popup e a altura do combo menos dois, aumentar o
+        // token aumenta a fonte e a linha ao mesmo tempo.
+        juce::Font getPopupMenuFont() override
+        {
+            return Theme::font (Theme::Type::control);
+        }
+
+        void drawComboBox (juce::Graphics& g, int width, int height, bool, int textX, int textY,
+                           int textWidth, int textHeight,
                            juce::ComboBox& box) override
         {
             auto area = juce::Rectangle<float> (0.0f, 0.0f, static_cast<float> (width),
@@ -158,6 +202,19 @@ namespace
 
             g.setColour (box.isEnabled() ? Theme::azure : Theme::muted);
             g.fillPath (arrow);
+
+            // Geometria do texto exatamente como a LookAndFeel_V2 faz: insere a
+            // esquerda para o texto nao encostar na borda e encolhe a direita
+            // para nao invadir a seta. positionComboBoxText ja entregou textWidth
+            // medido ate o inicio da seta, entao nao ha nada aqui para adivinhar.
+            const juce::Rectangle<float> textArea (static_cast<float> (textX) + 4.0f,
+                                                   static_cast<float> (textY),
+                                                   static_cast<float> (juce::jmax (0, textWidth - 5)),
+                                                   static_cast<float> (textHeight));
+
+            g.setColour (box.isEnabled() ? Theme::foreground : Theme::muted.withAlpha (0.55f));
+            g.setFont (getComboBoxFont (box));
+            g.drawText (box.getText(), textArea, juce::Justification::centredLeft, true);
         }
     };
 
@@ -1277,6 +1334,10 @@ PlayScoreEditor::PlayScoreEditor (PlayScoreProcessor& p)
         addAndMakeVisible (panel);
 
     styleCaption (cultureLabel);
+    // O rotulo fica no token de controle para acompanhar o combo, e nao no de
+    // secao que styleCaption aplica por padrao: "Idioma:" e o par do seletor, e
+    // a 1,5px de distancia vertical as duas palavras pareciam de campos diferentes.
+    cultureLabel.setFont (Theme::font (Theme::Type::control, true));
     addAndMakeVisible (cultureLabel);
 
     // Cultura ativa == índice da enumeração (PortugueseBR=0 ... SpanishES=3),
@@ -1341,8 +1402,16 @@ void PlayScoreEditor::resized()
     auto cultureBounds = getLocalBounds().removeFromTop (margin + headerHeight)
                                                 .withTrimmedTop (margin)
                                                 .removeFromRight (margin);
-    cultureSelector.setBounds (cultureBounds.removeFromRight (132).withHeight (24).withTrimmedTop (18));
-    cultureLabel.setBounds (cultureBounds.removeFromRight (72).withHeight (20).withTrimmedTop (20));
+    // A altura do combo e a altura da linha do popup, por acaso da JUCE e nao por
+    // escolha: positionComboBoxText pune o label interno com alturaDoCombo - 2, e
+    // getOptionsForComboBoxPopupMenu usa essa mesma altura como standardItemHeight.
+    // Com 24px de combo a linha do popup saia com 22px e um texto espremido - foi
+    // o que o usuario reportou como menu "minusculo". Subir o combo para 38px
+    // corrige os dois de uma vez, sem precisar mexer em ItemHeight.
+    cultureSelector.setBounds (cultureBounds.removeFromRight (cultureSelectorWidth)
+                                   .withHeight (cultureSelectorHeight).withTrimmedTop (12));
+    cultureLabel.setBounds (cultureBounds.removeFromRight (cultureLabelWidth)
+                                .withHeight (22).withTrimmedTop (20));
 
     auto body = bodyArea();
 
@@ -1401,7 +1470,8 @@ void PlayScoreEditor::paint (juce::Graphics& g)
 
     const int badgeWidthState = 108;
     const int badgeWidthMode  = 60;
-    const int reservedRight   = 132 + 72 + 20 + badgeWidthState + badgeWidthMode + 20;
+    const int reservedRight   = cultureSelectorWidth + cultureLabelWidth + 20
+                                + badgeWidthState + badgeWidthMode + 20;
 
     auto textArea = cursor.withWidth (juce::jmax (120, cursor.getWidth() - reservedRight));
 
@@ -1416,7 +1486,8 @@ void PlayScoreEditor::paint (juce::Graphics& g)
 
     // Selos à direita do título.
     const float badgeY = static_cast<float> (header.getY()) + 18.0f;
-    float badgeRight = static_cast<float> (header.getRight()) + 132.0f + 72.0f + 20.0f;
+    float badgeRight = static_cast<float> (header.getRight())
+                         + static_cast<float> (cultureSelectorWidth + cultureLabelWidth + 20);
 
     badgeRight -= static_cast<float> (badgeWidthState);
     const bool playing = processor.isTransportPlaying();
@@ -1432,12 +1503,16 @@ void PlayScoreEditor::paint (juce::Graphics& g)
     const auto footer = footerArea();
     Theme::paintRule (g, footer.withHeight (1.0f).toFloat().translated (0.0f, -10.0f));
 
+// Corpo, e nao caption: o rodape era o texto mais pequeno da tela e foi lido
+    // errado ("SOFWARE" em vez de "SOFTWARE") por ser 11px. Legibilidade aqui
+    // vale mais do que hierarquia sutil.
+    const auto footerRow = footer.withTrimmedBottom (10);
+
     g.setColour (Theme::muted);
-    g.setFont (Theme::font (Theme::Type::caption));
+    g.setFont (Theme::font (Theme::Type::body));
     g.drawText (Text::t ("PartePlay · Feito para músicos e arranjadores"),
-                footer.withTrimmedBottom (10), juce::Justification::centredLeft);
-    g.drawText (Text::t ("Produção Rubinho Lyra / Software Eng").toUpperCase(),
-                footer.withTrimmedBottom (10), juce::Justification::centredRight);
+                footerRow, juce::Justification::centredLeft);
+    g.drawText (footerCredit(), footerRow, juce::Justification::centredRight, true);
 }
 
 void PlayScoreEditor::timerCallback()

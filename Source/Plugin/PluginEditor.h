@@ -88,7 +88,7 @@ private:
     static constexpr int margin       = 20;
     static constexpr int gap          = 14;
     static constexpr int headerHeight = 62;
-    static constexpr int footerHeight = 28;
+    static constexpr int footerHeight = 32;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PlayScoreEditor)
 };
