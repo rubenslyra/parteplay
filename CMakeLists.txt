@@ -2,7 +2,7 @@
 
 # Versao do projeto. Este e o UNICO lugar onde a versao mora: badges, notas de
 # release e o formulario do AcoustID derivam daqui (regra de reconciliacao).
-project(PartePlay VERSION 0.2.0 LANGUAGES C CXX)
+project(PartePlay VERSION 0.2.2 LANGUAGES C CXX)
 
 # Versao da JUCE usada na build. Fato de DEPENDENCIA, e nao derivavel da versao
 # do projeto: a versao do PartePlay nao tem relacao com a 9.0.2 da JUCE. A CI le
@@ -137,8 +137,8 @@ set(PARTEPLAY_SOURCES
 )
 
 juce_add_plugin(PartePlay
-    # Derivado do PROJECT_VERSION, nunca escrito a mao: manter "0.2.0" aqui
-    # alem do project() era a mesma duplicacao que a regra de reconciliacao
+    # Derivado do PROJECT_VERSION, nunca escrito a mao: manter o numero escrito
+    # aqui alem do project() era a mesma duplicacao que a regra de reconciliacao
     # proibe, e o numero da release e o do bundle sao coisas que nao podem
     # divergir em silencio.
     VERSION ${PROJECT_VERSION}
