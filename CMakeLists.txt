@@ -137,13 +137,20 @@ set(PARTEPLAY_SOURCES
 )
 
 juce_add_plugin(PartePlay
-    VERSION "0.2.0"
+    # Derivado do PROJECT_VERSION, nunca escrito a mao: manter "0.2.0" aqui
+    # alem do project() era a mesma duplicacao que a regra de reconciliacao
+    # proibe, e o numero da release e o do bundle sao coisas que nao podem
+    # divergir em silencio.
+    VERSION ${PROJECT_VERSION}
     COMPANY_NAME "PartePlay"
     PRODUCT_NAME "PartePlay"
     PLUGIN_NAME "PartePlay"
     PLUGIN_MANUFACTURER_CODE "PRPL"
     PLUGIN_CODE "PTPY"
-    DESCRIPTION "Ficha da cancao (ISRC, ano, BPM) + reproducao sincronizada ao transport"
+    # Descreve so o que existe. A ficha da cancao (ISRC, ano) nao esta neste
+    # codigo: ate la, anunciar recurso inexistente no bundle e o que faz um
+    # usuario reportar bug em funcao que nunca foi entregue.
+    DESCRIPTION "Reproducao de referencia em sincronia com o transporte, com velocidade de treino, loop por compassos e fingerprint acustico local"
     FORMATS VST3
     VST3_CATEGORIES "Fx|Utilities"
     NEEDS_MIDI_INPUT FALSE
