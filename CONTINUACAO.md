@@ -103,7 +103,7 @@ registrada (aba *Signing keys*, título `parteplay-signing`).
 | # | Assunto | Entregue | Falta |
 |---|---|---|---|
 | 1 | Pipeline ffmpeg/ffprobe + remoção de silêncio inicial + UI de progresso | — | tudo. Issue existe, nenhum código. Decidir **licença e empacotamento antes da pipeline** — é o que determina a interface. Considerar detector nativo antes de adotar ffmpeg. |
-| 2 | `C4244` em `TempoAnalyser.cpp:248` e `FingerprintWorker.cpp:157` | **Os dois pontos corrigidos** em `0c05f85` (`develop`). O do fingerprint corrigiu um bug real de escala do PCM, não só o warning. | Rodar a suíte (nunca rodou desde a mudança) e **promover `/WX` a erro nos fontes próprios** — sem isso a issue volta. |
+| 2 | `C4244` em `TempoAnalyser.cpp:248` e `FingerprintWorker.cpp:157` | **Os dois pontos corrigidos** em `0c05f85` (`develop`), agora em `Source/Analysis/`. O do fingerprint corrigiu um bug real de escala do PCM, não só o warning. **Suíte rodada: 325 verificações, 0 falhas** (30/09, preset `msvc-2026`) — a pendência de rodar a suíte está resolvida. | **Promover `/WX` a erro nos fontes próprios** — sem isso a issue volta. |
 | 3 | Cobertura automatizada: sync sob time-stretch e vocoder | — | tudo. Mas `testFingerprintPcmConversion` já serve de **precedente**: invariante quantitativa, não golden file, exatamente o que a issue pede. |
 | 4 | Licenças de terceiros no binário distribuído (Chromaprint LGPL) | Issue escrita com a análise da LGPL-2.1; tarball 1.6.1 confirmado em `Chromaprint-Dependences/`. **`THIRD_PARTY_NOTICES.md` criado em 30/09/2026** e lincado no README, com cada string de licença lida do arquivo real da árvore. | Enumerar a lista de libs vendorizadas dentro da JUCE (hoje o arquivo aponta para o `LICENSE.md` da JUCE em vez de listar). |
 | 5 | Credenciais plaintext + secret scanning | Análise registrada na própria issue: `secrets` está no `.gitignore`, `git log --all -- secrets` vazio, **não vazou**. | Mover para variável de ambiente, documentar em `CONTRIBUTING.md`, `gitleaks`/`detect-secrets` no CI, **rotacionar** OAuth do GitHub e chave AcoustID. |
@@ -144,10 +144,42 @@ backup. `chkdsk /scan` (read-only) exige shell elevado e ainda não foi executad
 4. Badge e subtítulo do cabeçalho enxutos; painel 05 sem a métrica duplicada.
 5. `CMakeLists.txt`: `PARTEPLAY_SOURCES` + whitespace limpo.
 
-⚠️ Não apagar `build/msvc/PartePlay_artefacts` **depois** do configure: contém
+⚠️ Não apagar `build\msvc-2026\PartePlay_artefacts` **depois** do configure: contém
 `Defs.txt`; sem ele o `juceaide` quebra com `Unhandled exception` / `MSB8066`.
+Vale para qualquer árvore de build — `build\msvc` foi removida em 30/09 e
+recriar o preset `msvc` gera os `Defs.txt` de novo, sem problema.
 
-## Pendências
+## Branches e governança (30/09/2026)
+
+Três branches novas, criadas a partir de `develop` (`232dfcd`):
+
+| Branch | Papel | Estado |
+|---|---|---|
+| `main` | linha publicada, protegida | `977411d` |
+| `develop` | integração | `232dfcd`, 7 commits à frente do remoto |
+| `release/0.2.2` | correções apenas — **patch**, sem ISRC | `133d901`, PR #7 aberto |
+| `epic/identidade-do-fonograma` | ISRC/ano/aba de metadados — **0.3.0** | parada, criada de `develop` |
+
+O número `0.2.2` **não** é mais "0.2.1". A regra de SemVer para `0.x` que ficou
+escrita no `CONTRIBUTING.md`: tudo que o usuário percebe é **minor**, só defeito
+é **patch**. A aba de metadados é funcionalidade, logo é `0.3.0`, e por isso está
+em branch própria em vez de ser somada à de correções.
+
+Escopo acordado: reestruturar `Source/` (feito, junto com `Source/` na branch de
+release); apagar `build\msvc` e manter `build\msvc-2026` (feito); só o domínio de
+identidade do fonograma entra no épico.
+
+**PR #7 — https://github.com/rubenslyra/parteplay/pull/7** — `release/0.2.2` →
+`develop`, 9 commits. Ubuntu e macOS verdes; Conventional Commits, leitura de
+metadados, versão-única e SonarCloud verdes; **Windows ainda rodando** no momento
+desta escrita.
+
+Sobre Conventional Commits: o gate **falhou na primeira execução** com
+`Cannot find module '@commitlint/config-conventional'`, porque o CLI não traz o
+preset e o commitlint resolve `extends` a partir da raiz do repo, que não tem
+`node_modules`. Passava local só por cache do `npx` — verde na máquina que
+escreveu, vermelho no runner. As 12 regras do preset estão agora inline em
+`commitlint.config.js`, o que elimina a dependência e deixa as regras legíveis.
 
 ### 1. Confirmar a CI de `959cf24` — ✅ resolvido
 Run `36521048403` (commit `977411d`) terminou **success**. O run de `959cf24`
@@ -174,10 +206,11 @@ Para instalar o binário **da release** sem recompilar, copiar manualmente.
 Anexar `PartePlay-0.2.0-rc.1-linux-x64.tar.gz` e
 `...-macos-universal.zip` quando houver build local verificado dessas plataformas.
 
-### 5. `THIRD_PARTY_NOTICES` — **não criado**
-Já é prometido no README e é a issue #4. O tarball do Chromaprint 1.6.1 já está
-no repo (`Chromaprint-Dependences/`), então a obrigação de fonte pode ser
-cumprida com material existente.
+### 5. `THIRD_PARTY_NOTICES` — ✅ entregue, falta enumeração
+Criado em 30/09/2026 (`b399b77`), lincado no README, com cada string de licença
+lida do arquivo real da árvore. A issue #4 permanece aberta só pelo motivo
+descrito na tabela de issues: o arquivo aponta para o `LICENSE.md` da JUCE em
+vez de enumerar as libs vendorizadas dentro dela.
 
 ### 6. Rotacionar credenciais locais
 `secrets` tem OAuth do GitHub e chave AcoustID em plaintext (ignorado pelo Git,
@@ -216,8 +249,9 @@ Ambos gitignored. **Não commitar.** O post do LinkedIn **não** foi publicado.
   30/09/2026 no preset `msvc-2026`).
 - `secrets` é um **arquivo** de 311 bytes na raiz do repo (OAuth do GitHub + chave
   AcoustID), não uma pasta. O `.gitignore` cobre os dois casos.
-- `develop` **já está no GitHub**, em sincronia com `origin/develop` — a
-  pendência registrada em "Estado do repositório" foi resolvida.
+- `develop` **está no GitHub** e ficou 7 commits à frente de `origin/develop` até
+  30/09/2026, quando o **PR #7** (`release/0.2.2` → `develop`) foi aberto para
+  propagar a linha de manutenção. Ver "Branches e governança".
 - `JUCE_ROOT` está definido como variável de ambiente no escopo do usuário
   (`D:\Program Files\JUCE`), então o configure usa o caminho de precedência
   correta e o aviso de "default fixo desta maquina" não aparece mais.
@@ -231,5 +265,23 @@ Ambos gitignored. **Não commitar.** O post do LinkedIn **não** foi publicado.
 ## Como retomar
 ```powershell
 cd D:\source\DevOUT\parteplay
-gh run list --branch main --limit 2      # pendencia 1
+gh pr checks 7                       # resultado da matriz de build do PR #7
+git log --oneline origin/develop..develop
 ```
+O próximo passo é o merge do PR #7 em `develop`; depois, `develop` → `main` para
+liberar a 0.2.2. A branch `epic/identidade-do-fonograma` precisa ser atualizada
+com `develop` antes de começar o trabalho de metadados.
+
+### Instalação ainda não validada de ponta a ponta
+O `install-vst3.ps1` foi exercitado contra `msvc` e `msvc-2026` e para
+corretamente no gate de privilégio — mas **esta sessão não é administrativa**,
+então a cópia para `Program Files` nunca aconteceu. O binário instalado
+continua sendo o de 29/09, hash `AFE01F4B17F8CBBF`, que não corresponde a
+nenhuma árvore local. Para fechar isso, com o MuseScore fechado e um shell
+elevado:
+```powershell
+.\scripts\build.ps1
+.\scripts\install-vst3.ps1 -SkipTests
+Get-FileHash "C:\Program Files\Common Files\VST3\PartePlay.vst3\Contents\x86_64-win\PartePlay.vst3"
+```
+O hash impresso pelo script tem de bater com o do bundle em `build\msvc-2026`.
