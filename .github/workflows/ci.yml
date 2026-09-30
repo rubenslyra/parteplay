@@ -189,6 +189,19 @@ jobs:
             exit 1
           }
           Write-Host "Bundle: $($bundle.FullName)"
+          # Um desktop.ini na raiz do bundle viola a especificacao do VST3, e o
+          # .gitignore nao protege um zip. Este passo e o que produz o artefato
+          # publicado, entao a verificacao tem de estar aqui: o instalador local
+          # protege a maquina de desenvolvimento, nao a release. E so o runner
+          # Windows que podepolluir o bundle, ja que desktop.ini nao existe nos
+          # outros sistemas - mas a lista fica igual em todos por simetria.
+          $lixo = Get-ChildItem $bundle.FullName -Recurse -Force -File |
+                   Where-Object { $_.Name -in @('desktop.ini','Thumbs.db','.DS_Store') }
+          if ($lixo) {
+            $lixo | ForEach-Object { Write-Host "  - $($_.FullName)" }
+            Write-Error "::error::lixeira dentro do bundle VST3"
+            exit 1
+          }
           $out = "${{ matrix.name }}-PartePlay-PartePlay.vst3.zip"
           Compress-Archive -Path $bundle.FullName -DestinationPath $out -Force
           Write-Host "Artefato: $out"
@@ -205,6 +218,12 @@ jobs:
             exit 1
           fi
           echo "Bundle: $bundle"
+          # Mesma verificacao do passo Windows: o artefato e o zip, e nada
+          # depois disso pode tirar um arquivo de dentro dele.
+          lixo=$(find "$bundle" -type f \( -name 'desktop.ini' -o -name 'Thumbs.db' -o -name '.DS_Store' \))
+          if [ -n "$lixo" ]; then
+            echo "::error::lixeira dentro do bundle VST3:"; echo "$lixo"; exit 1
+          fi
           out="${{ matrix.name }}-PartePlay-PartePlay.vst3.zip"
           (cd "$(dirname "$bundle")" && zip -r "$GITHUB_WORKSPACE/$out" "$(basename "$bundle")")
           echo "Artefato: $out"
@@ -275,6 +294,10 @@ jobs:
             *) echo "::error::bundle nao e universal: $lipo_archs"; exit 1; ;;
           esac
           out="macOS-universal-PartePlay-PartePlay.vst3.zip"
+          lixo=$(find "$bundle" -type f \( -name 'desktop.ini' -o -name 'Thumbs.db' -o -name '.DS_Store' \))
+          if [ -n "$lixo" ]; then
+            echo "::error::lixeira dentro do bundle VST3:"; echo "$lixo"; exit 1
+          fi
           (cd "$(dirname "$bundle")" && zip -r "$GITHUB_WORKSPACE/$out" "$(basename "$bundle")")
 
       - uses: actions/upload-artifact@v4
