@@ -9,7 +9,7 @@
 [![JUCE](https://img.shields.io/badge/JUCE-9.0.2-3d2b8a?logo=juce)](CMakeLists.txt)
 [![Language](https://img.shields.io/badge/C%2B%2B-C%2B%2B17-00599c?logo=c%2B%2B&logoColor=white)](CMakeLists.txt)
 [![CMake](https://img.shields.io/badge/CMake-3.22%2B-064f8c?logo=cmake&logoColor=white)](CMakePresets.json)
-[![Tests](https://img.shields.io/badge/tests-313%20checks%20%E2%9C%85-4c9a2c)](Tests/DomainTests.cpp)
+[![Tests](https://img.shields.io/badge/tests-325%20checks%20%E2%9C%85-4c9a2c)](Tests/DomainTests.cpp)
 [![i18n](https://img.shields.io/badge/i18n-pt--BR%20%7C%20en--GB%20%7C%20en--US%20%7C%20es--ES-0f7cbf)](Source/Text.cpp)
 [![CI](https://github.com/rubenslyra/parteplay/actions/workflows/ci.yml/badge.svg)](https://github.com/rubenslyra/parteplay/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-lightgrey)](LICENSE)
@@ -120,7 +120,7 @@ cmake --build --preset msvc --config Release --target PartePlayTests
 ctest --preset msvc
 ```
 
-**313 checks, 0 failures.** The suite is organized so that musical correctness is enforced by code,
+**325 checks, 0 failures.** The suite is organized so that musical correctness is enforced by code,
 not by ear:
 
 | Group                | What it locks                                                                                                                                              |
@@ -194,7 +194,7 @@ Source/
   ParameterIds.h    — parameter identifiers (single source)
   Text.*            — i18n (pt-BR | en-GB | en-US | es-ES) and text interpolation
 Tests/
-  DomainTests.cpp   — 313 checks: tuning, encoding, i18n, fingerprint, player publication
+  DomainTests.cpp   — 325 checks: tuning, encoding, i18n, fingerprint, player publication
 ```
 
 Structural decisions worth knowing:

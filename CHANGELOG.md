@@ -32,7 +32,7 @@ Próxima versão: **0.2.0** (a 0.1.0 já foi distribuída; o número mora só em
   declarada como fato único; a CI clona a tag exata em vez de derivá-la do
   número do projeto (a derivação original produzia a tag inexistente `0.1.0`).
 - **README em inglês** — reescrito para o público: transporte escravo, i18n e
-  fingerprint offline descritos com precisão; badges de testes (313) e CI.
+  fingerprint offline descritos com precisão; badges de testes (325) e CI.
 - **Página do produto em GitHub Pages** — `docs/index.html` autossuficiente
   (sem JS, sem builds) com `.github/workflows/pages.yml` para publicar via
   GitHub Actions.
@@ -48,7 +48,7 @@ Próxima versão: **0.2.0** (a 0.1.0 já foi distribuída; o número mora só em
 
 ### Alterado
 
-- **A suíte de domínio passou a 313 verificações**, incluindo: códigos BCP 47,
+- **A suíte de domínio passou a 325 verificações**, incluindo: códigos BCP 47,
   separador decimal por cultura, grafia das variantes do inglês, acentuação do
   es-ES, cálculo/cancelamento/rejeições do fingerprint e publicação do player sem
   lock.

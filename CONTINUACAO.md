@@ -105,11 +105,28 @@ registrada (aba *Signing keys*, título `parteplay-signing`).
 | 1 | Pipeline ffmpeg/ffprobe + remoção de silêncio inicial + UI de progresso | — | tudo. Issue existe, nenhum código. Decidir **licença e empacotamento antes da pipeline** — é o que determina a interface. Considerar detector nativo antes de adotar ffmpeg. |
 | 2 | `C4244` em `TempoAnalyser.cpp:248` e `FingerprintWorker.cpp:157` | **Os dois pontos corrigidos** em `0c05f85` (`develop`). O do fingerprint corrigiu um bug real de escala do PCM, não só o warning. | Rodar a suíte (nunca rodou desde a mudança) e **promover `/WX` a erro nos fontes próprios** — sem isso a issue volta. |
 | 3 | Cobertura automatizada: sync sob time-stretch e vocoder | — | tudo. Mas `testFingerprintPcmConversion` já serve de **precedente**: invariante quantitativa, não golden file, exatamente o que a issue pede. |
-| 4 | Licenças de terceiros no binário distribuído (Chromaprint LGPL) | Issue escrita com a análise da LGPL-2.1; tarball 1.6.1 confirmado em `Chromaprint-Dependences/`. | `THIRD_PARTY_NOTICES` **não existe** (ainda prometido no README). O material para cumprir a obrigação de fonte já está no repo. |
+| 4 | Licenças de terceiros no binário distribuído (Chromaprint LGPL) | Issue escrita com a análise da LGPL-2.1; tarball 1.6.1 confirmado em `Chromaprint-Dependences/`. **`THIRD_PARTY_NOTICES.md` criado em 30/09/2026** e lincado no README, com cada string de licença lida do arquivo real da árvore. | Enumerar a lista de libs vendorizadas dentro da JUCE (hoje o arquivo aponta para o `LICENSE.md` da JUCE em vez de listar). |
 | 5 | Credenciais plaintext + secret scanning | Análise registrada na própria issue: `secrets` está no `.gitignore`, `git log --all -- secrets` vazio, **não vazou**. | Mover para variável de ambiente, documentar em `CONTRIBUTING.md`, `gitleaks`/`detect-secrets` no CI, **rotacionar** OAuth do GitHub e chave AcoustID. |
 
-O número de verificações vai de 313 para **325 esperadas** — aritmética, não
-observação: o build compilou às 18:44 mas morreu antes de linkar.
+O número de verificações foi de 313 para **325** — confirmado por observação em
+30/09/2026, não por aritmética: a suíte rodou e imprimiu
+`325 verificacoes, 0 falha(s)`. As 12 novas são as do teste de regressão do PCM
+descrito em "Corrigido". O número já foi reconciliado no README, no
+`docs/index.html` e no CHANGELOG.
+
+## Estado do disco (30/09/2026) — não resolvido
+
+O `D:` continua em **`Full Repair Needed`**. Isto é a causa das sinalizações de erro
+no Visual Studio, não o código: o build de linha de comando do zero passa limpo
+(0 erros; os 9 warnings restantes são um único `C4244` dentro do Chromaprint, código
+de terceiro, e os fontes próprios do projeto não têm warning nenhum).
+
+Backup verificado em `C:\PartePlay-BACKUP-2026-09-30\` (repo sem `build/`, chaves de
+assinatura, `secrets` e os binários de hoje). `git fsck` = 0, 429/429 arquivos, SHA-256
+das fontes e das chaves sem divergência. Ver o `MANIFEST.txt` naquela pasta.
+
+**`chkdsk /f` ainda NÃO foi rodado** e não deve ser, até decidir o que fazer com o
+backup. `chkdsk /scan` (read-only) exige shell elevado e ainda não foi executado.
 
 
 ## Fixes técnicos desta sessão
@@ -195,7 +212,17 @@ Ambos gitignored. **Não commitar.** O post do LinkedIn **não** foi publicado.
 - `FingerprintWorker.*` calcula Chromaprint fora da thread de áudio.
 - `FilePlayer.*` publica buffers por `shared_ptr<const>` atômico, sem lock no áudio.
 - `Text.*` i18n pt-BR / en-GB / en-US / es-ES.
-- `Tests/DomainTests.cpp`: **313 verificações, 0 falhas**.
+- `Tests/DomainTests.cpp`: **325 verificações, 0 falhas** (confirmado rodando em
+  30/09/2026 no preset `msvc-2026`).
+- `secrets` é um **arquivo** de 311 bytes na raiz do repo (OAuth do GitHub + chave
+  AcoustID), não uma pasta. O `.gitignore` cobre os dois casos.
+- `develop` **já está no GitHub**, em sincronia com `origin/develop` — a
+  pendência registrada em "Estado do repositório" foi resolvida.
+- `JUCE_ROOT` está definido como variável de ambiente no escopo do usuário
+  (`D:\Program Files\JUCE`), então o configure usa o caminho de precedência
+  correta e o aviso de "default fixo desta maquina" não aparece mais.
+- VS2022 **BuildTools** continua instalado (`Program Files (x86)`), então o preset
+  `msvc` funciona; o `msvc-2026` usa o VS 18 Enterprise. Os dois coexistem.
 - `CMakePresets.json`: `msvc`, `ninja`, `linux`, `macos`, `macos-universal`.
 - `agent.md` é interno e gitignored — nunca commitar.
 - O GPG do Git for Windows (`C:\Program Files\Git\usr\bin\gpg.exe`) **não gera
