@@ -1,4 +1,12 @@
-# Continuação — PartePlay (estado em 2026-09-29, fim de sessão)
+# Continuação — PartePlay (estado em 2026-09-29, após a queda do disco)
+
+> ⚠️ **O `D:` (Disco 0, PNY CS900 120GB) falhou durante a build de 29/09** —
+> 202 falhas de escrita na MFT do NTFS, com perda de dados confirmada, e o
+> volume está em `Full Repair Needed`. **Não rodar `chkdsk /f`** antes de copiar
+> o que importa. O dossiê com os logs está em
+> `C:\Users\rlyra\Desktop\PartePlay-SSD-diagnostico-2026-09-29\`.
+> O laudo aponta **cabo / controladora / alimentação** como causa comum
+> (os dois discos falharam na mesma janela), não só a memória flash.
 
 ## Objetivo
 
@@ -7,11 +15,15 @@ colaboração externa com o mínimo de atrito: release baixável, documentação
 inglês, Pages no ar e `main` protegida.
 
 ## Estado do repositório
-- Branch: `main`, working tree **limpa**.
-- `HEAD` local = `origin/main` = **`959cf24`** ("Document signed commits now that
-  main requires them").
-- `CI` desse commit **ainda rodando** ao fim da sessão (run em `in_progress`).
-  **Pendente: confirmar.** Ver "Pendência 1".
+- Branch de trabalho: **`develop`** (criada a partir de `main` em `977411d`).
+- `main` permanece em `977411d` = `origin/main`, intocada e com a proteção valendo.
+- `develop` tem 1 commit à frente: **`0c05f85`**, assinado, com a correção do PCM
+  do fingerprint, o segundo `C4244`, o teste de regressão e o preset `msvc-2026`.
+- `CI` de `977411d`: run `36521048403`, **success** ✅ (a pendência 1 está resolvida;
+  o run de `959cf24` está `cancelled` porque foi supersedido pelo push seguinte).
+- **`develop` ainda não foi enviada ao GitHub.** Decidir se entra como push direto
+  ou via PR — `main` exige aprovação de code owner e o owner não pode aprovar o
+  próprio PR, então o caminho é `enforce_admins: false` com merge explícito.
 
 ## Release candidate: publicada ✅
 - Tag **`v0.2.0-rc.1`**, marcada como **pre-release** (não draft).
@@ -86,14 +98,19 @@ registrada (aba *Signing keys*, título `parteplay-signing`).
 - `publicacao-playbook.md` **removido** do repo (era material de redes sociais).
 - `.gitignore` agora ignora `linkedin-*.md` e `social-*.md`.
 
-## Issues abertas (5)
-| # | Assunto |
-|---|---|
-| 1 | Pipeline ffmpeg/ffprobe + remoção de silêncio inicial + UI de progresso |
-| 2 | `C4244` em `TempoAnalyser.cpp:248` e `FingerprintWorker.cpp:157` |
-| 3 | Cobertura automatizada: sync sob time-stretch e vocoder |
-| 4 | Licenças de terceiros no binário distribuído (Chromaprint LGPL) |
-| 5 | Credenciais plaintext + secret scanning |
+## Issues abertas (5) — e o que já foi entregue
+
+| # | Assunto | Entregue | Falta |
+|---|---|---|---|
+| 1 | Pipeline ffmpeg/ffprobe + remoção de silêncio inicial + UI de progresso | — | tudo. Issue existe, nenhum código. Decidir **licença e empacotamento antes da pipeline** — é o que determina a interface. Considerar detector nativo antes de adotar ffmpeg. |
+| 2 | `C4244` em `TempoAnalyser.cpp:248` e `FingerprintWorker.cpp:157` | **Os dois pontos corrigidos** em `0c05f85` (`develop`). O do fingerprint corrigiu um bug real de escala do PCM, não só o warning. | Rodar a suíte (nunca rodou desde a mudança) e **promover `/WX` a erro nos fontes próprios** — sem isso a issue volta. |
+| 3 | Cobertura automatizada: sync sob time-stretch e vocoder | — | tudo. Mas `testFingerprintPcmConversion` já serve de **precedente**: invariante quantitativa, não golden file, exatamente o que a issue pede. |
+| 4 | Licenças de terceiros no binário distribuído (Chromaprint LGPL) | Issue escrita com a análise da LGPL-2.1; tarball 1.6.1 confirmado em `Chromaprint-Dependences/`. | `THIRD_PARTY_NOTICES` **não existe** (ainda prometido no README). O material para cumprir a obrigação de fonte já está no repo. |
+| 5 | Credenciais plaintext + secret scanning | Análise registrada na própria issue: `secrets` está no `.gitignore`, `git log --all -- secrets` vazio, **não vazou**. | Mover para variável de ambiente, documentar em `CONTRIBUTING.md`, `gitleaks`/`detect-secrets` no CI, **rotacionar** OAuth do GitHub e chave AcoustID. |
+
+O número de verificações vai de 313 para **325 esperadas** — aritmética, não
+observação: o build compilou às 18:44 mas morreu antes de linkar.
+
 
 ## Fixes técnicos desta sessão
 1. **Build Windows quebrado:** `PartePlay_VST3` recebia só o wrapper do JUCE e
@@ -115,13 +132,9 @@ registrada (aba *Signing keys*, título `parteplay-signing`).
 
 ## Pendências
 
-### 1. Confirmar a CI de `959cf24` — primeiro passo da retomada
-```powershell
-cd D:\source\DevOUT\parteplay
-gh run list --branch main --limit 2
-```
-Esperado: `success` nos 7 checks. Se `version-single-source` falhar, reproduzir
-local com o script em `Temp\opencode\check_version.py`.
+### 1. Confirmar a CI de `959cf24` — ✅ resolvido
+Run `36521048403` (commit `977411d`) terminou **success**. O run de `959cf24`
+aparece `cancelled` porque o push seguinte o supersedeu — não foi falha.
 
 ### 2. Backup da chave privada de assinatura — **prioridade**
 `~/.ssh/id_ed25519_signing` está **sem passphrase**. Se for perdida, não há

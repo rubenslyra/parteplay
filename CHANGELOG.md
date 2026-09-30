@@ -74,6 +74,37 @@ Próxima versão: **0.2.0** (a 0.1.0 já foi distribuída; o número mora só em
   - O binário do bundle VST3 de macOS não tem extensão: a asserção de
     arquitetura procurava `*.dylib` e falhava num build que tinha dado certo.
 
+### Corrigido
+
+- **A impressão digital não correspondia à do `fpcalc`.** A conversão para PCM
+  int16 estava escrita `(int16_t) x * 32767.0f`, e o cast liga mais forte que o
+  `*`: a amostra era truncada para `{-1, 0, +1}` **antes** de ser escalada. O
+  Chromaprint recebia um sinal de três níveis em vez do áudio.
+
+  O sintoma era silencioso de um jeito difícil de diagnosticar: a impressão
+  continuava sendo base64 válido, ou seja, **nenhum teste existente falhava**. O
+  único efeito observável era o AcoustID não encontrar a gravação — sem crash e
+  sem linha de log que apontasse para a causa. Agora a conversão é
+  `Fingerprint::toPcm16`, com o limite aplicado antes da escala e o cast no fim,
+  e a escala é nomeada (`pcm16FullScale`) porque precisa ser a mesma do `fpcalc`.
+
+  Coberto por um teste de regressão que afirma uma **invariante quantitativa**
+  (uma rampa de 1001 pontos tem de produzir mais de 500 níveis distintos — a
+  versão com o bug produzia exatamente três), e não "a saída é base64 válido",
+  que era justamente o que deixava passar. 12 verificações novas.
+
+### Alterado
+
+- **`C4244` corrigido nos dois pontos da issue #2** — o estreitamento
+  `double`→`float` na janela de Hann de `TempoAnalyser::estimateTuningCents`
+  (a fase permanece `double`; o estreitamento acontece uma vez, explícito, em
+  vez de vazar pela atribuição) e o `float`→`int16_t` do PCM do fingerprint.
+  Em ambos os casos a conversão deixa de ser implícita e passa a ser uma
+  decisão visível.
+- **Novo preset `msvc-2026`** no `CMakePresets.json`, para Visual Studio 18 2026
+  Enterprise, ao lado do `msvc` existente — que é preservado, com histórico
+  próprio em `build/msvc`.
+
 ## [0.1.0] — 2026-09-03
 
 Primeira versão pública. (O que mudou depois dela está em [Não publicado], inclusive a
