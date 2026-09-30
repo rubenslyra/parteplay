@@ -105,8 +105,8 @@ For a large change, open the issue first and align on the design before writing 
 | I need to touch… | Go to |
 |---|---|
 | Tuning / ratio / pitch detection | `Source/Tuning.h` · `Source/Tuning.cpp` |
-| Texts and screen labels | `Source/Text.cpp` (table `pt-BR | en-GB | en-US | es-ES`) |
-| Colours and drawing | `Source/Theme.h` |
+| Texts and screen labels | `Source/Ui/Text.cpp` (table `pt-BR | en-GB | en-US | es-ES`) |
+| Colours and drawing | `Source/Ui/Theme.h` |
 | Panel layout | `Source/PluginEditor.cpp` |
 | Plugin parameters | `Source/ParameterIds.h` · `PluginProcessor.cpp` |
 | Offline fingerprint | `Source/FingerprintWorker.*` |

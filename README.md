@@ -1,16 +1,16 @@
-﻿# PartePlay
+# PartePlay
 
 [![Status](https://img.shields.io/badge/status-in%20development-c94f4d)](CHANGELOG.md)
 [![Version](https://img.shields.io/badge/version-0.2.2-blue)](CMakeLists.txt)
 [![Build matrix](https://img.shields.io/badge/build-Windows%20%7C%20Linux%20%7C%20macOS%20universal-0078d4?logo=github)](https://github.com/rubenslyra/parteplay/actions/workflows/ci.yml)
-[![Format](https://img.shields.io/badge/format-VST3-ff5722)](Source/PluginProcessor.cpp)
-[![Host](https://img.shields.io/badge/host-MuseScore%204%20%2F%20DAW-8a2be2)](Source/PluginProcessor.cpp)
-[![Audio](https://img.shields.io/badge/audio-WAV%20%7C%20FLAC%20%7C%20OGG%20%7C%20MP3-4c9a2c)](Source/FilePlayer.cpp)
+[![Format](https://img.shields.io/badge/format-VST3-ff5722)](Source/Plugin/PluginProcessor.cpp)
+[![Host](https://img.shields.io/badge/host-MuseScore%204%20%2F%20DAW-8a2be2)](Source/Plugin/PluginProcessor.cpp)
+[![Audio](https://img.shields.io/badge/audio-WAV%20%7C%20FLAC%20%7C%20OGG%20%7C%20MP3-4c9a2c)](Source/Audio/FilePlayer.cpp)
 [![JUCE](https://img.shields.io/badge/JUCE-9.0.2-3d2b8a?logo=juce)](CMakeLists.txt)
 [![Language](https://img.shields.io/badge/C%2B%2B-C%2B%2B17-00599c?logo=c%2B%2B&logoColor=white)](CMakeLists.txt)
 [![CMake](https://img.shields.io/badge/CMake-3.22%2B-064f8c?logo=cmake&logoColor=white)](CMakePresets.json)
 [![Tests](https://img.shields.io/badge/tests-325%20checks%20%E2%9C%85-4c9a2c)](Tests/DomainTests.cpp)
-[![i18n](https://img.shields.io/badge/i18n-pt--BR%20%7C%20en--GB%20%7C%20en--US%20%7C%20es--ES-0f7cbf)](Source/Text.cpp)
+[![i18n](https://img.shields.io/badge/i18n-pt--BR%20%7C%20en--GB%20%7C%20en--US%20%7C%20es--ES-0f7cbf)](Source/Ui/Text.cpp)
 [![CI](https://github.com/rubenslyra/parteplay/actions/workflows/ci.yml/badge.svg)](https://github.com/rubenslyra/parteplay/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-lightgrey)](LICENSE)
 
@@ -179,23 +179,42 @@ All parameters are persisted in the host session and available for automation.
 
 ## Architecture
 
+`Source/` is grouped by **module**, not by layer or by file type. Each folder answers one
+question, and every file in it answers that question:
+
 ```
 Source/
-  PluginProcessor   — core: parameters, host sync, playback pipeline
-  PluginEditor      — the 5:4 editor (panels, LookAndFeel, layout, locale selector)
-  Theme.h           — visual tokens and painting helpers
-  FilePlayer        — loading, playback, loop, waveform peaks
-  PitchShifter      — offline pitch-shift engine (isolated, replaceable; used only for
-                      reference-vs-detected tuning compensation)
-  TempoAnalyser     — BPM, meter, bars and tuning detection
-  Tuning.*          — music domain: reference notes, cents, playback ratio (single source)
-  FingerprintWorker — Chromaprint fingerprinting off the audio thread, async state machine
-  MidiMapExporter   — MIDI 1.0 time-map export
-  ParameterIds.h    — parameter identifiers (single source)
-  Text.*            — i18n (pt-BR | en-GB | en-US | es-ES) and text interpolation
+  Core/            identifiers and pure maths, with no JUCE and no host
+    ParameterIds.h    — parameter identifiers (single source)
+    Tuning.*          — music domain: reference notes, cents, playback ratio (single source)
+  Audio/           the audio path
+    FilePlayer.*      — loading, playback, loop, waveform peaks
+    PitchShifter.*    — offline pitch-shift engine (isolated, replaceable; used only for
+                        reference-vs-detected tuning compensation)
+    Waveform.h        — min/max peak reduction, the data behind the waveform display
+  Analysis/        what measures the file
+    TempoAnalyser.*   — BPM, meter, bars and tuning detection
+    FingerprintWorker.* — Chromaprint fingerprinting off the audio thread, async state machine
+  Ui/              presentation
+    Text.*            — i18n (pt-BR | en-GB | en-US | es-ES) and text interpolation
+    Theme.h           — visual tokens and painting helpers
+  Plugin/          the VST3 shell, the part the host sees
+    PluginProcessor.* — parameters, host sync, playback pipeline
+    PluginEditor.*    — the 5:4 editor (panels, LookAndFeel, layout, locale selector)
+  Export/
+    MidiMapExporter.* — MIDI 1.0 time-map export
 Tests/
   DomainTests.cpp   — 325 checks: tuning, encoding, i18n, fingerprint, player publication
 ```
+
+`Waveform.h` sits in `Audio/` and not in `Ui/`, because it is derived data — min/max pairs
+over the decoded buffer — produced by `FilePlayer` and drawn by the editor. It is neither
+one nor the other.
+
+Every module folder is on the include path, so cross-module includes stay
+`#include "Tuning.h"` with no path. The trade is explicit: the folder structure *documents*
+the dependency direction, it does not enforce it. Enforcing it would mean a library target
+per module, which for fourteen files is more scaffolding than code.
 
 Structural decisions worth knowing:
 
@@ -253,7 +272,7 @@ licence; whether PartePlay ships a commercial edition is an open product decisio
 | Software architecture        | Centralized music-domain model (`Tuning`, `ParameterIds`), replaceable engine seams, thread-safety decisions, feasibility analysis against real VST3 constraints |
 | C++ / JUCE / audio DSP       | Phase vocoder, host-synced player, tempo analyser, offline fingerprint worker, JUCE editor                                                                       |
 | VST3 / MuseScore integration | SDK contract, Slave/Master transport role, MIDI 1.0 time-map export, MuseScore 4 notation template                                                               |
-| UI/UX & design system        | 5:4 editor redesign, token system (`Source/Theme.h`), panels, visual identity                                                                                    |
+| UI/UX & design system        | 5:4 editor redesign, token system (`Source/Ui/Theme.h`), panels, visual identity                                                                                    |
 | Product, roadmap & docs      | Scope and prioritization, internationalization, handoff, this README                                                                                             |
 | DevOps / build / release     | CMake presets, install scripts with hash verification, CTest suite, multi-platform CI                                                                            |
 

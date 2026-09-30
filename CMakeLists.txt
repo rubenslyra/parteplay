@@ -124,17 +124,49 @@ unset(KISSFFT_ROOT             CACHE)
 # Fonte unica da verdade da lista de arquivos. Os dois targets gerados pelo
 # juce_add_plugin (PartePlay e PartePlay_VST3) consomem esta mesma lista, para
 # que adicionar um arquivo novo nunca precise ser feito em dois lugares.
-set(PARTEPLAY_SOURCES
-    Source/PluginProcessor.cpp
-    Source/PluginEditor.cpp
-    Source/FilePlayer.cpp
-    Source/FingerprintWorker.cpp
-    Source/MidiMapExporter.cpp
-    Source/PitchShifter.cpp
-    Source/Text.cpp
-    Source/TempoAnalyser.cpp
-    Source/Tuning.cpp
+#
+# Source/ esta organizado por modulo, nao por tipo nem por camada:
+#
+#   Core/      identificadores e matematica pura; nao conhece JUCE nem host
+#   Audio/     o caminho do audio: decodificacao, publicacao, pitch, picos
+#   Analysis/  o que mede o arquivo (fingerprint, andamento, afinacao)
+#   Ui/        apresentacao: i18n e cores
+#   Plugin/    a casca VST3, o que o hospedeiro enxerga
+#   Export/    MIDI para o DAW
+#
+# Waveform.h fica em Audio/ e nao em Ui/ porque e dado derivado do audio (pares
+# min/max) e nao apresentacao: o FilePlayer o produz, o editor o consome.
+#
+# Todos os diretorios acima entram no include path, e por isso nenhum include do
+# codigo mudou quando a arvore foi criada: sao sempre #include "Arquivo.h", sem
+# caminho. O preco e que o preprocessor nao impõe a direcao das dependencias
+# entre modulos; a organizacao documenta, e nao restringe. Fixa-la exigiria
+# alvos de biblioteca por modulo, o que para 14 arquivos seria arquitetura de
+# guarda-chuva a mais do que de codigo.
+set(PARTEPLAY_MODULE_DIRS
+    Core Audio Analysis Ui Plugin Export
 )
+
+set(PARTEPLAY_SOURCES
+    Source/Plugin/PluginProcessor.cpp
+    Source/Plugin/PluginEditor.cpp
+    Source/Audio/FilePlayer.cpp
+    Source/Analysis/FingerprintWorker.cpp
+    Source/Export/MidiMapExporter.cpp
+    Source/Audio/PitchShifter.cpp
+    Source/Ui/Text.cpp
+    Source/Analysis/TempoAnalyser.cpp
+    Source/Core/Tuning.cpp
+)
+
+# Os mesmos diretorios, mas como caminhos absolutos: target_sources() precisa de
+# caminho relativo ao fonte, target_include_directories() precisa de caminho
+# utilizavel no compilador. Montar os dois da mesma lista e o que impede os dois
+# de divergirem.
+set(PARTEPLAY_MODULE_PATHS)
+foreach (dir IN LISTS PARTEPLAY_MODULE_DIRS)
+    list(APPEND PARTEPLAY_MODULE_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/Source/${dir}")
+endforeach()
 
 juce_add_plugin(PartePlay
     # Derivado do PROJECT_VERSION, nunca escrito a mao: manter o numero escrito
@@ -168,7 +200,7 @@ if(WIN32)
     # Garantir que as fontes vao para o target VST3 tambem
     target_sources(PartePlay_VST3 PRIVATE ${PARTEPLAY_SOURCES})
     target_link_libraries(PartePlay_VST3 PRIVATE PartePlay juce::juce_audio_formats juce::juce_dsp chromaprint BinaryData)
-    target_include_directories(PartePlay_VST3 PRIVATE Source "${CMAKE_CURRENT_BINARY_DIR}/juce_binarydata_BinaryData/JuceLibraryCode" "${CHROMAPRINT_ROOT}/src")
+    target_include_directories(PartePlay_VST3 PRIVATE ${PARTEPLAY_MODULE_PATHS} "${CMAKE_CURRENT_BINARY_DIR}/juce_binarydata_BinaryData/JuceLibraryCode" "${CHROMAPRINT_ROOT}/src")
     target_compile_definitions(PartePlay_VST3 PRIVATE CHROMAPRINT_NODLL=1 JUCE_VST3_CAN_REPLACE_VST2=0)
     if(MSVC)
         target_compile_options(PartePlay_VST3 PRIVATE /utf-8)
@@ -191,7 +223,7 @@ target_link_libraries(PartePlay PRIVATE juce::juce_audio_formats juce::juce_dsp 
 juce_add_binary_data(BinaryData SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/PartePlay-Icon.png")
 target_link_libraries(PartePlay PRIVATE BinaryData)
 
-target_include_directories(PartePlay PRIVATE Source "${CMAKE_CURRENT_BINARY_DIR}/juce_binarydata_BinaryData/JuceLibraryCode")
+target_include_directories(PartePlay PRIVATE ${PARTEPLAY_MODULE_PATHS} "${CMAKE_CURRENT_BINARY_DIR}/juce_binarydata_BinaryData/JuceLibraryCode")
 
 # O target chromaprint usa include_directories() de diretorio, e nao
 # INTERFACE_INCLUDE_DIRECTORIES, entao vincular a lib nao propaga o header.
@@ -222,11 +254,11 @@ juce_add_console_app(PartePlayTests PRODUCT_NAME "PartePlayTests")
 
 target_sources(PartePlayTests PRIVATE
     Tests/DomainTests.cpp
-    Source/FilePlayer.cpp
-    Source/FingerprintWorker.cpp
-    Source/TempoAnalyser.cpp
-    Source/Text.cpp
-    Source/Tuning.cpp
+    Source/Audio/FilePlayer.cpp
+    Source/Analysis/FingerprintWorker.cpp
+    Source/Analysis/TempoAnalyser.cpp
+    Source/Ui/Text.cpp
+    Source/Core/Tuning.cpp
 )
 
 target_link_libraries(PartePlayTests PRIVATE
@@ -240,7 +272,7 @@ target_link_libraries(PartePlayTests PRIVATE
     juce::juce_events
     chromaprint
 )
-target_include_directories(PartePlayTests PRIVATE Source)
+target_include_directories(PartePlayTests PRIVATE ${PARTEPLAY_MODULE_PATHS})
 target_include_directories(PartePlayTests PRIVATE "${CHROMAPRINT_ROOT}/src")
 target_compile_definitions(PartePlayTests PRIVATE CHROMAPRINT_NODLL=1)
 target_compile_features(PartePlayTests PRIVATE cxx_std_17)
