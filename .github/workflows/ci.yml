@@ -182,28 +182,47 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $bundle = Get-ChildItem "build/${{ matrix.preset }}" -Recurse -Directory -Filter 'PartePlay.vst3' |
-                    Select-Object -First 1
-          if (-not $bundle) {
-            Write-Error "::error::PartePlay.vst3 nao encontrado em build/${{ matrix.preset }}"
+          # Caminho exato, e nao "o primeiro PartePlay.vst3 que aparecer".
+          #
+          # Este passo empacotava o primeiro bundle encontrado na varredura, e o
+          # cache de build restaura arvores antigas (restore-keys ignora o sha).
+          # Num projeto multi-config isso escolhe Debug antes de Release, porque
+          # "Debug" ordena antes de "Release" no nome do diretorio - e o job so
+          # compila Release. Ou seja: o artefato publicado no Windows era um
+          # build Debug de um commit anterior, com codigo diferente do que o
+          # job acabou de compilar. Depende da ordem da varredura, entao o
+          # resultado mudava conforme o cache.
+          #
+          # E a explicaçao de dois binarios com hashes diferentes saindo do
+          # mesmo fonte, que foi o sintoma com que isso comecou.
+          $bundle = "build/${{ matrix.preset }}/PartePlay_artefacts/${{ matrix.build_type }}/VST3/PartePlay.vst3"
+          if (-not (Test-Path $bundle -PathType Container)) {
+            Write-Error "::error::bundle nao encontrado em $bundle (esperado config ${{ matrix.build_type }})"
+            Get-ChildItem "build/${{ matrix.preset }}" -Recurse -Directory -Filter 'PartePlay.vst3' |
+              ForEach-Object { Write-Host "  encontrado: $($_.FullName)" }
             exit 1
           }
-          Write-Host "Bundle: $($bundle.FullName)"
-          # Um desktop.ini na raiz do bundle viola a especificacao do VST3, e o
-          # .gitignore nao protege um zip. Este passo e o que produz o artefato
-          # publicado, entao a verificacao tem de estar aqui: o instalador local
-          # protege a maquina de desenvolvimento, nao a release. E so o runner
-          # Windows que podepolluir o bundle, ja que desktop.ini nao existe nos
-          # outros sistemas - mas a lista fica igual em todos por simetria.
-          $lixo = Get-ChildItem $bundle.FullName -Recurse -Force -File |
+          Write-Host "Bundle: $bundle"
+
+          # O runner do Windows cria desktop.ini dentro do bundle. Ele nunca e
+          # intencional e nao pode entrar no zip, entao e removido e a ausencia
+          # de qualquer resto e verificada em seguida. Falhar sem limpar
+          # transformaria um detalhe do runner em CI vermelho permanente.
+          $lixo = Get-ChildItem $bundle -Recurse -Force -File |
                    Where-Object { $_.Name -in @('desktop.ini','Thumbs.db','.DS_Store') }
-          if ($lixo) {
-            $lixo | ForEach-Object { Write-Host "  - $($_.FullName)" }
+          foreach ($f in $lixo) {
+            Write-Host "  removendo: $($f.Name)"
+            Remove-Item $f.FullName -Force
+          }
+          $resto = Get-ChildItem $bundle -Recurse -Force -File |
+                   Where-Object { $_.Name -in @('desktop.ini','Thumbs.db','.DS_Store') }
+          if ($resto) {
+            $resto | ForEach-Object { Write-Host "  - $($_.FullName)" }
             Write-Error "::error::lixeira dentro do bundle VST3"
             exit 1
           }
           $out = "${{ matrix.name }}-PartePlay-PartePlay.vst3.zip"
-          Compress-Archive -Path $bundle.FullName -DestinationPath $out -Force
+          Compress-Archive -Path $bundle -DestinationPath $out -Force
           Write-Host "Artefato: $out"
 
       - name: Empacotar o VST3 (Linux/macOS)
@@ -220,9 +239,14 @@ jobs:
           echo "Bundle: $bundle"
           # Mesma verificacao do passo Windows: o artefato e o zip, e nada
           # depois disso pode tirar um arquivo de dentro dele.
-          lixo=$(find "$bundle" -type f \( -name 'desktop.ini' -o -name 'Thumbs.db' -o -name '.DS_Store' \))
+          lixo=$(find "$bundle" -type f \( -name 'desktop.ini' -o -name 'Thumbs.db' -o -name '.DS_Store' \) -print)
           if [ -n "$lixo" ]; then
-            echo "::error::lixeira dentro do bundle VST3:"; echo "$lixo"; exit 1
+            echo "removendo lixeira:"; echo "$lixo" | sed 's/^/  /'
+            echo "$lixo" | while IFS= read -r f; do rm -f "$f"; done
+          fi
+          resto=$(find "$bundle" -type f \( -name 'desktop.ini' -o -name 'Thumbs.db' -o -name '.DS_Store' \))
+          if [ -n "$resto" ]; then
+            echo "::error::lixeira dentro do bundle VST3:"; echo "$resto"; exit 1
           fi
           out="${{ matrix.name }}-PartePlay-PartePlay.vst3.zip"
           (cd "$(dirname "$bundle")" && zip -r "$GITHUB_WORKSPACE/$out" "$(basename "$bundle")")
@@ -294,9 +318,11 @@ jobs:
             *) echo "::error::bundle nao e universal: $lipo_archs"; exit 1; ;;
           esac
           out="macOS-universal-PartePlay-PartePlay.vst3.zip"
-          lixo=$(find "$bundle" -type f \( -name 'desktop.ini' -o -name 'Thumbs.db' -o -name '.DS_Store' \))
-          if [ -n "$lixo" ]; then
-            echo "::error::lixeira dentro do bundle VST3:"; echo "$lixo"; exit 1
+          lixo=$(find "$bundle" -type f \( -name 'desktop.ini' -o -name 'Thumbs.db' -o -name '.DS_Store' \) -print)
+          if [ -n "$lixo" ]; then echo "$lixo" | while IFS= read -r f; do rm -f "$f"; done; fi
+          resto=$(find "$bundle" -type f \( -name 'desktop.ini' -o -name 'Thumbs.db' -o -name '.DS_Store' \))
+          if [ -n "$resto" ]; then
+            echo "::error::lixeira dentro do bundle VST3:"; echo "$resto"; exit 1
           fi
           (cd "$(dirname "$bundle")" && zip -r "$GITHUB_WORKSPACE/$out" "$(basename "$bundle")")
 
