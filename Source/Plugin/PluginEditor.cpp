@@ -246,6 +246,48 @@ namespace
         slider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
     }
 
+    //==============================================================================
+    // Auxiliares de layout vertical.
+    //
+    // A JUCE clampa removeFromTop/removeFromBottom em silencio: pedir 26px a uma
+    // area de 5px devolve 5px, e o componente seguinte acaba posicionado por cima
+    // do anterior. Era esse o "ruido" na base do painel 05 - a nota e o botao de
+    // exportar, ambos com 0px, desenhados no mesmo pixel.
+    //
+    // takeTop/takeBottom devolvem um retangulo vazio quando nao ha altura, e quem
+    // chama esconde o componente; space() so consome se sobrar. Assim nenhum
+    // tamanho de janela consegue produzir sobreposicao: no pior caso, o texto
+    // opcional some em vez de virar borrao.
+    juce::Rectangle<int> takeTop (juce::Rectangle<int>& area, int height)
+    {
+        if (area.getHeight() < height)
+            return {};
+
+        return area.removeFromTop (height);
+    }
+
+    juce::Rectangle<int> takeBottom (juce::Rectangle<int>& area, int height)
+    {
+        if (area.getHeight() < height)
+            return {};
+
+        return area.removeFromBottom (height);
+    }
+
+    void space (juce::Rectangle<int>& area, int height)
+    {
+        if (area.getHeight() > height)
+            area.removeFromTop (height);
+    }
+
+    // Mostra e posiciona, ou esconde quando o retangulo veio vazio. Um retangulo
+    // vazio significa que o espaco acabou: esconder e melhor do que sobrepor.
+    void place (juce::Component& component, juce::Rectangle<int> bounds)
+    {
+        component.setVisible (! bounds.isEmpty());
+        component.setBounds (bounds);
+    }
+
     juce::String signedValue (int value)
     {
         return (value > 0 ? Text::from ("+") : Text::from ("")) + juce::String (value);
@@ -589,19 +631,25 @@ public:
     {
         auto area = contentArea();
 
-        auto header = area.removeFromTop (42);
+        auto header = takeTop (area, 42);
         loadButton.setBounds (header.removeFromRight (132).withHeight (30).translated (0, 6));
         header.removeFromRight (12);
         fileNameLabel.setBounds (header.removeFromTop (20));
         metaLabel.setBounds (header.removeFromTop (16));
 
-        auto times = area.removeFromBottom (20);
+        auto times = takeBottom (area, 20);
         positionLabel.setBounds (times.removeFromLeft (96));
         durationLabel.setBounds (times.removeFromRight (96));
         hintLabel.setBounds (times);
 
-        area.removeFromBottom (10);
-        waveform.setBounds (area);
+        space (area, 10);
+
+        // A forma de onda e o elemento flexivel: absorve o que sobrar. Abaixo do
+        // minimo ela some, em vez de virar uma tarja de poucos pixels.
+        if (area.getHeight() >= 40)
+            place (waveform, area);
+        else
+            waveform.setVisible (false);
     }
 
 private:
@@ -757,32 +805,43 @@ public:
     {
         auto area = contentArea();
 
-        auto tiles = area.removeFromTop (56);
+        auto tiles = takeTop (area, 56);
         juce::FlexBox tileRow;
         tileRow.flexDirection = juce::FlexBox::Direction::row;
         tileRow.items.add (juce::FlexItem (stateTile).withFlex (1.0f).withMargin (juce::FlexItem::Margin (0, 4, 0, 0)));
         tileRow.items.add (juce::FlexItem (positionTile).withFlex (1.0f).withMargin (juce::FlexItem::Margin (0, 0, 0, 4)));
         tileRow.performLayout (tiles);
 
-        area.removeFromTop (12);
+        space (area, 12);
 
-        auto toggles = area.removeFromTop (28);
+        auto toggles = takeTop (area, 28);
         juce::FlexBox toggleRow;
         toggleRow.flexDirection = juce::FlexBox::Direction::row;
         toggleRow.items.add (juce::FlexItem (loopToggle).withFlex (1.0f).withMargin (juce::FlexItem::Margin (0, 4, 0, 0)));
         toggleRow.items.add (juce::FlexItem (muteToggle).withFlex (1.0f).withMargin (juce::FlexItem::Margin (0, 0, 0, 4)));
         toggleRow.performLayout (toggles);
 
-        area.removeFromTop (10);
-        area.removeFromBottom (34);
+        space (area, 10);
 
-        layoutRow (speedLabel, speedSlider, speedValue, area.removeFromTop (26));
-        area.removeFromTop (6);
-        layoutRow (loopStartLabel, loopStartSlider, loopStartValue, area.removeFromTop (26));
-        area.removeFromTop (6);
-        layoutRow (loopEndLabel, loopEndSlider, loopEndValue, area.removeFromTop (26));
+        // A nota cede primeiro: e explicativa, e nao comando. Os 10px seguintes
+        // sao a folga da linha divisoria desenhada em paint(), que fica logo acima
+        // dela.
+        const auto noteBounds = takeBottom (area, 24);
+        space (area, 10);
+        place (noteLabel, noteBounds);
 
-        noteLabel.setBounds (area.removeFromBottom (24));
+        // As tres linhas dividem o que sobrar, entao em janela grande ficam mais
+        // altas. O piso de 22px e onde o slider e o valor ainda se leem, e e o que
+        // garante que a ultima linha ("Fim (compasso)") nunca seja cortada pela
+        // metade - o defeito original era ela receber os 5px que restavam.
+        const int rowGap    = 6;
+        const int rowHeight = juce::jlimit (22, 30, (area.getHeight() - rowGap * 2) / 3);
+
+        layoutRow (speedLabel, speedSlider, speedValue, takeTop (area, rowHeight));
+        space (area, rowGap);
+        layoutRow (loopStartLabel, loopStartSlider, loopStartValue, takeTop (area, rowHeight));
+        space (area, rowGap);
+        layoutRow (loopEndLabel, loopEndSlider, loopEndValue, takeTop (area, rowHeight));
     }
 
 private:
@@ -791,6 +850,18 @@ private:
     {
         const int captionWidth = 132;
         const int valueWidth   = 52;
+
+        if (row.isEmpty())
+        {
+            caption.setVisible (false);
+            slider.setVisible (false);
+            value.setVisible (false);
+            return;
+        }
+
+        caption.setVisible (true);
+        slider.setVisible (true);
+        value.setVisible (true);
 
         caption.setBounds (row.removeFromLeft (captionWidth));
         value.setBounds (row.removeFromRight (valueWidth));
@@ -938,26 +1009,28 @@ public:
     {
         auto area = contentArea();
 
-        auto header = area.removeFromTop (64);
-        ring.setBounds (header.removeFromLeft (64));
+        auto header = takeTop (area, 56);
+        ring.setBounds (header.removeFromLeft (56));
         header.removeFromLeft (12);
         titleLabel.setBounds (header.removeFromTop (24));
         originLabel.setBounds (header.removeFromTop (18));
 
-        area.removeFromTop (14);
+        space (area, 10);
 
         // Linhas rótulo/valor: a coluna de rótulos tem largura fixa para os
         // três alinharem, e o valor ocupa o resto à direita.
-        constexpr int rowHeight = 26;
-        constexpr int gap        = 4;
+        constexpr int rowHeight = 24;
+        constexpr int rowGap    = 4;
         constexpr int captionWidth = 150;
 
         auto addRow = [&] (juce::Label& caption, juce::Label& value)
         {
-            auto row = area.removeFromTop (rowHeight);
+            auto row = takeTop (area, rowHeight);
+            caption.setVisible (! row.isEmpty());
+            value.setVisible (! row.isEmpty());
             caption.setBounds (row.removeFromLeft (captionWidth));
             value.setBounds (row);
-            area.removeFromTop (gap);
+            space (area, rowGap);
         };
 
         addRow (isrcCaption, isrcValue);
@@ -965,7 +1038,12 @@ public:
         addRow (bpmCaption, bpmValue);
         addRow (idCaption, idValue);
 
-        noticeLabel.setBounds (area.removeFromTop (56));
+        // O aviso e o ultimo: absorve o que sobrar e some quando nao ha altura
+        // para duas linhas de texto.
+        if (area.getHeight() >= 28)
+            place (noticeLabel, area);
+        else
+            noticeLabel.setVisible (false);
     }
 
 private:
@@ -1159,26 +1237,31 @@ public:
     {
         auto area = contentArea();
 
-        auto header = area.removeFromTop (52);
-        ring.setBounds (header.removeFromLeft (52));
+        auto header = takeTop (area, 48);
+        ring.setBounds (header.removeFromLeft (48));
         header.removeFromLeft (12);
         referenceCaption.setBounds (header.removeFromTop (16));
         referenceValue.setBounds (header.removeFromTop (26));
 
-        area.removeFromTop (12);
+        space (area, 8);
 
-        auto sliderRow = area.removeFromTop (22);
+        auto sliderRow = takeTop (area, 22);
         pitchMinLabel.setBounds (sliderRow.removeFromLeft (30));
         pitchMaxLabel.setBounds (sliderRow.removeFromRight (30));
         sliderRow.removeFromLeft (8);
         sliderRow.removeFromRight (8);
         pitchSlider.setBounds (sliderRow);
 
-        area.removeFromTop (8);
-        resetButton.setBounds (area.removeFromTop (28).removeFromLeft (150));
+        space (area, 6);
+        place (resetButton, takeTop (area, 28).removeFromLeft (150));
+        space (area, 8);
 
-        area.removeFromTop (12);
-        fileTuningTile.setBounds (area.removeFromTop (56));
+        // O tile de afinacao do arquivo e informativo: e o que cede em janela
+        // menor, antes de qualquer controle.
+        if (area.getHeight() >= 48)
+            place (fileTuningTile, takeTop (area, juce::jmin (56, area.getHeight())));
+        else
+            fileTuningTile.setVisible (false);
     }
 
 private:
@@ -1260,8 +1343,7 @@ public:
     {
         auto area = contentArea();
 
-        auto tilesRow = area.removeFromTop (56);
-        area.removeFromTop (12);
+        auto tilesRow = takeTop (area, 56);
 
         juce::FlexBox row;
         row.flexDirection = juce::FlexBox::Direction::row;
@@ -1270,11 +1352,18 @@ public:
         row.items.add (juce::FlexItem (durationTile).withFlex (1.0f).withMargin (juce::FlexItem::Margin (0, 0, 0, 4)));
         row.performLayout (tilesRow);
 
-        area.removeFromBottom (24);
-        messageLabel.setBounds (area.removeFromBottom (20));
-        noteLabel.setBounds (area.removeFromBottom (30));
-        area.removeFromBottom (10);
-        exportButton.setBounds (area.removeFromTop (32));
+        space (area, 8);
+
+        place (exportButton, takeTop (area, 30));
+        space (area, 6);
+
+        // Os dois textos vem de baixo para cima, nesta ordem: a mensagem do
+        // exportar fica colada no rodape e a nota de estimativa logo acima dela.
+        // Como takeBottom devolve vazio quando nao cabem, em janela baixa eles
+        // somem um a um, a nota primeiro - antes eles dois colapsavam em 0px no
+        // mesmo ponto, e era isso o ruido horizontal na base do painel.
+        place (messageLabel, takeBottom (area, 18));
+        place (noteLabel, takeBottom (area, 28));
     }
 
 private:
@@ -1356,9 +1445,15 @@ PlayScoreEditor::PlayScoreEditor (PlayScoreProcessor& p)
     addAndMakeVisible (cultureSelector);
 
     // Proporção 5:4 (referência visual 2000x1600), redimensionável pelo hospedeiro.
-    setSize (1000, 800);
+    // O padrão é o menor tamanho em que os cinco painéis mostram todo o conteúdo,
+    // inclusive as notas de rodapé. O mínimo fica abaixo dele de propósito: em
+    // janela menor o essencial continua visível e só as notas cedem, porque cada
+    // painel posiciona o opcional com takeBottom e esconde o que não couber. Não
+    // subo o mínimo para os 896 de altura porque telas de 1366x768 (notebook
+    // comum) não comportam a janela; a contrapartida é que nelas as notas somem.
+    setSize (1120, 896);
     setResizable (true, false);
-    setResizeLimits (800, 640, 1600, 1280);
+    setResizeLimits (1000, 800, 1600, 1280);
 
     if (auto* constrainer = getConstrainer())
         constrainer->setFixedAspectRatio (5.0 / 4.0);
@@ -1399,9 +1494,19 @@ juce::Rectangle<int> PlayScoreEditor::bodyArea() const
 
 void PlayScoreEditor::resized()
 {
+    // O bloco do idioma vive na direita do cabecalho. reduced(), e nao
+    // removeFromRight(): removeFromRight devolve a faixa removida - os 20px da
+    // margem - entao cultureBounds ficava com 20px de largura. O combo era
+    // comprimido contra a borda direita e o popup da JUCE, que se alinha pela
+    // borda esquerda do combo, abria para fora da janela: era assim que
+    // "Espanol (Espana)" aparecia cortado. O rotulo, no segundo removeFromRight,
+    // encolhia a largura zero e sumia.
     auto cultureBounds = getLocalBounds().removeFromTop (margin + headerHeight)
-                                                .withTrimmedTop (margin)
-                                                .removeFromRight (margin);
+                                            .withTrimmedTop (margin)
+                                            .reduced (margin, 0);
+
+    const int cultureTop = 12;
+
     // A altura do combo e a altura da linha do popup, por acaso da JUCE e nao por
     // escolha: positionComboBoxText pune o label interno com alturaDoCombo - 2, e
     // getOptionsForComboBoxPopupMenu usa essa mesma altura como standardItemHeight.
@@ -1409,9 +1514,11 @@ void PlayScoreEditor::resized()
     // o que o usuario reportou como menu "minusculo". Subir o combo para 38px
     // corrige os dois de uma vez, sem precisar mexer em ItemHeight.
     cultureSelector.setBounds (cultureBounds.removeFromRight (cultureSelectorWidth)
-                                   .withHeight (cultureSelectorHeight).withTrimmedTop (12));
+                                              .withTrimmedTop (cultureTop)
+                                              .withHeight (cultureSelectorHeight));
     cultureLabel.setBounds (cultureBounds.removeFromRight (cultureLabelWidth)
-                                .withHeight (22).withTrimmedTop (20));
+                                           .withTrimmedTop (cultureTop)
+                                           .withHeight (cultureSelectorHeight));
 
     auto body = bodyArea();
 
@@ -1429,8 +1536,11 @@ void PlayScoreEditor::resized()
 
     {
         const int total = rightColumn.getHeight() - gap * 2;
-        const int songSheetHeight = static_cast<int> (static_cast<float> (total) * 0.38f);
-        const int tuningHeight    = static_cast<int> (static_cast<float> (total) * 0.36f);
+        // As proporcoes seguem a altura que cada painel precisa, e nao numeros
+        // redondos: com 0.38/0.36/resto o painel 05 ficava 26px abaixo do proprio
+        // conteudo, e era o unico dos tres a cortar no tamanho padrao.
+        const int songSheetHeight = static_cast<int> (static_cast<float> (total) * 0.365f);
+        const int tuningHeight    = static_cast<int> (static_cast<float> (total) * 0.345f);
 
         songSheetPanel->setBounds (rightColumn.removeFromTop (songSheetHeight));
         rightColumn.removeFromTop (gap);
@@ -1484,10 +1594,12 @@ void PlayScoreEditor::paint (juce::Graphics& g)
     g.drawText (Text::t ("ESPAÇO DE TRABALHO DO ÁUDIO DE REFERÊNCIA"),
                 textArea.removeFromTop (16), juce::Justification::centredLeft);
 
-    // Selos à direita do título.
+    // Selos à direita do título, à esquerda do bloco de idioma. O sinal e de
+    // subtracao: com "+" o selo comecava em header.getRight() + 322, ou seja,
+    // 300px fora da janela - os selos "Tocando"/"VST3" nao apareciam.
     const float badgeY = static_cast<float> (header.getY()) + 18.0f;
     float badgeRight = static_cast<float> (header.getRight())
-                         + static_cast<float> (cultureSelectorWidth + cultureLabelWidth + 20);
+                         - static_cast<float> (cultureSelectorWidth + cultureLabelWidth + 20);
 
     badgeRight -= static_cast<float> (badgeWidthState);
     const bool playing = processor.isTransportPlaying();
