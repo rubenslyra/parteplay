@@ -6,10 +6,15 @@ name: CI
 # de la.
 
 on:
+  # develop entra no gatilho pela mesma razao que o lint de commits: sem ele, os
+  # dois commits que corrigiram o PCM do fingerprint - incluindo um bug real de
+  # escala, nao so um warning - foram publicados sem nunca passar por build e
+  # teste de CI. A correcao foi validada so na maquina que a fez, num disco em
+  # Full Repair Needed.
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
 
 permissions:
   contents: read
