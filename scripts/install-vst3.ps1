@@ -5,7 +5,12 @@ param(
     # Preset de configure/build. Precisa bater com o preset usado para compilar,
     # senao o script copia um binario de outra arvore de build sem avisar - que e
     # como um plugin de tres dias atras chega ao host sem ninguem perceber.
-    [string]$Preset = $(if ($env:PARTEPLAY_PRESET) { $env:PARTEPLAY_PRESET } else { "msvc" }),
+    #
+    # O padrao e msvc-2026 porque e o toolchain deste projeto em Windows. O preset
+    # `msvc` (VS2022) continua no CMakePresets.json por causa da CI, que roda em
+    # windows-2022 e usa aquele toolchain; ele nao e o padrao local. Para usar
+    # outro, $env:PARTEPLAY_PRESET ou -Preset.
+    [string]$Preset = $(if ($env:PARTEPLAY_PRESET) { $env:PARTEPLAY_PRESET } else { "msvc-2026" }),
 
     # Instala sem rodar a suite de testes de dominio.
     [switch]$SkipTests,

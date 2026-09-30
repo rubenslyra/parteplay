@@ -12,7 +12,7 @@
     {
       "name": "msvc",
       "inherits": "base",
-      "displayName": "Visual Studio 2022 (MSVC) x64",
+      "displayName": "Visual Studio 2022 (MSVC) x64 - toolchain da CI",
       "generator": "Visual Studio 17 2022",
       "architecture": "x64",
       "binaryDir": "${sourceDir}/build/msvc"
@@ -20,7 +20,7 @@
     {
       "name": "msvc-2026",
       "inherits": "base",
-      "displayName": "Visual Studio 2026 Enterprise (MSVC) x64",
+      "displayName": "Visual Studio 2026 Enterprise (MSVC) x64 - padrao local",
       "generator": "Visual Studio 18 2026",
       "architecture": "x64",
       "binaryDir": "${sourceDir}/build/msvc-2026"

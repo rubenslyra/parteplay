@@ -4,8 +4,8 @@ param(
 
     # Preset de configure/build. Tem de ser o mesmo nos dois passos: compilar com
     # um preset e instalar de outro foi o que deixou um plugin obsoleto no host
-    # sem ninguem perceber.
-    [string]$Preset = $(if ($env:PARTEPLAY_PRESET) { $env:PARTEPLAY_PRESET } else { "msvc" }),
+    # sem ninguem perceber. O padrao e msvc-2026; veja install-vst3.ps1.
+    [string]$Preset = $(if ($env:PARTEPLAY_PRESET) { $env:PARTEPLAY_PRESET } else { "msvc-2026" }),
 
     # Nao instala no VST3 do sistema; so compila e roda os testes.
     [switch]$NoInstall
