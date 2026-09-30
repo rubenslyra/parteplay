@@ -58,6 +58,15 @@ entra, e 0.2.2 é o primeiro número que não colide com nada já publicado.
 - **Conventional Commits como chave do changelog** — `git log --oneline` passa a
   distinguir correção de mudança de formatação, que é o que permite escrever o
   changelog a partir do histórico em vez de da memória.
+- **Política de branches e versão em `CONTRIBUTING.md`** — topologia
+  (`main` / `develop` / `release/0.2.2` / `epic/*` / `task/*`), uma issue e uma
+  branch, as cerimônias SCRUM traduzidas em artefatos do repositório em vez de
+  reuniões, e a tabela de SemVer que diz o que cabe em patch e o que é minor. A
+  regra que amarra o resto: **a tarefa não está pronta até o repositório estar
+  limpo** — artefato, árvore de build obsoleta, documento contradizendo o código
+  ou número não reconciliado significam trabalho abandonado no meio.
+- **Seção de higiene em `CONTRIBUTING.md`** — o que conta como sujeira aqui, e
+  por quê cada item é um defeito e não um detalhe de estilo.
 
 ### Removido
 
