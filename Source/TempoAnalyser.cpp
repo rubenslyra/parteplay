@@ -242,10 +242,17 @@ double TempoAnalyser::estimateTuningCents (double sampleRate, const juce::AudioB
 
     juce::dsp::FFT fft (fftOrder);
 
+    // Janela de Hann. twoPi e double, entao a fase e double e so o resultado
+    // final e guardado em float. A conversao e intencional (o destino e
+    // float por escolha) e fica explicita: sem o static_cast o MSVC emite
+    // C4244 nesta linha, e e a unica atribuicao do projeto em que um double
+    // chega num float sem cast.
     std::vector<float> window (static_cast<size_t> (fftSize));
     for (int i = 0; i < fftSize; ++i)
-        window[static_cast<size_t> (i)] =
-            0.5f - 0.5f * std::cos (juce::MathConstants<double>::twoPi * i / (fftSize - 1));
+    {
+        const double phase = juce::MathConstants<double>::twoPi * i / (fftSize - 1);
+        window[static_cast<size_t> (i)] = static_cast<float> (0.5 - 0.5 * std::cos (phase));
+    }
 
     std::vector<float> spectrum (static_cast<size_t> (fftSize * 2), 0.0f);
     std::vector<int> histogram (static_cast<size_t> (histSize), 0);

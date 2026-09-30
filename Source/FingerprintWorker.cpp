@@ -28,6 +28,15 @@ namespace Fingerprint
         return cancel != nullptr && cancel->load();
     }
 
+    int16_t toPcm16 (float mono) noexcept
+    {
+        // Limitar ANTES de escalar: a soma dos canais pode passar de 1.0 e o
+        // produto estouraria o int16. Limitar e escalar e entao converter - o
+        // cast no fim, nunca no meio. Ver a nota em FingerprintWorker.h.
+        const auto clamped = juce::jlimit (-1.0f, 1.0f, mono);
+        return static_cast<int16_t> (clamped * pcm16FullScale);
+    }
+
     Result compute (const juce::File& file, const std::atomic<bool>* cancel)
     {
         Result result;
@@ -150,11 +159,7 @@ namespace Fingerprint
                     for (int c = 0; c < numChannels; ++c)
                         sum += block.getSample (c, i);
 
-                    const auto mono = sum / (float) numChannels;
-
-                    // jlimit antes da conversao: soma de canais pode passar de
-                    // 1.0 e estouraria o int16.
-                    pcm[(size_t) i] = (int16_t) juce::jlimit (-1.0, 1.0, (double) mono) * 32767.0f;
+                    pcm[(size_t) i] = toPcm16 (sum / (float) numChannels);
                 }
 
                 if (chromaprint_feed (ctx, pcm.data(), wanted) == 0)

@@ -59,6 +59,26 @@ namespace Fingerprint
     // que consultar o AcoustID e receber "not found" sem explicacao.
     inline constexpr double minimumUsefulSeconds = 10.0;
 
+    // Escala o fator de conversao para PCM int16. 32767 e o maior valor com
+    // sinal, e o mesmo que o Chromaprint espera: o PCM precisa ter a mesma
+    // escala do fpcalc, senao a impressao digital nao bate com a deReference.
+    inline constexpr float pcm16FullScale = 32767.0f;
+
+    // Converte uma amostra ja reduzida a mono em PCM int16.
+    //
+    // Existe como funcao isolada, e nao como expressao dentro do laco, por causa
+    // de uma armadilha de C++ que aqui custou um bug real e silencioso:
+    // `(int16_t) x * 32767.0f` liga o cast ANTES da multiplicacao, porque o
+    // cast liga mais forte que `*`. O sinal e truncado para {-1, 0, +1} e so
+    // depois escalado, de modo que o Chromaprint recebe um PCM de tres niveis
+    // em vez do audio. A impressao digital continua valida em base64 - apenas
+    // nao bate com a do fpcalc, e o sintoma aparece como "o AcoustID nao acha a
+    // gravacao", sem crash nem log que aponte a causa. Um teste que so verifique
+    // "o resultado e base64" nao enxerga isso.
+    //
+    // Por isso o cast fica no fim, visivel, e o caminho e testavel.
+    int16_t toPcm16 (float mono) noexcept;
+
     // Nucleo sincrono, separado do threading para poder ser testado sem thread.
     //
     // `cancel` pode ser nulo; quando nao nulo, e consultado a cada bloco para

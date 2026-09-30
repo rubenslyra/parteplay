@@ -19,6 +19,7 @@
 #include <cstdio>
 #include <cstring>
 #include <limits>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -780,6 +781,70 @@ namespace
         return file;
     }
 
+    // Regressao do bug de `(int16_t) x * 32767.0f`.
+    //
+    // Este teste existe porque a suite inteira passava com o bug instalado. Os
+    // testes de fingerprint so afirmavam que o resultado era base64 valido, e um
+    // PCM de tres niveis produz base64 valido. Aqui a invariante e quantitativa:
+    // uma rampa de -1 a 1 tem de produzir muitos niveis distintos, e um valor
+    // moderado tem de sobreviver inteiro.
+    void testFingerprintPcmConversion()
+    {
+        std::printf ("\n[fingerprint] conversao para PCM int16");
+
+        // Full scale exato nas duas pontas.
+        check (Fingerprint::toPcm16 (1.0f) == 32767, "+1.0 satura em 32767");
+        check (Fingerprint::toPcm16 (-1.0f) == -32767, "-1.0 satura em -32767");
+        check (Fingerprint::toPcm16 (0.0f) == 0, "0.0 vira 0");
+
+        // Entrada fora de faixa e limitada, nao envolve. A soma dos canais num
+        // arquivo multicanal passa de 1.0 com facilidade; sem limitar, o
+        // produto estouraria o int16 e daria de -32768 (o wrap e silencioso).
+        check (Fingerprint::toPcm16 (2.5f) == 32767, "entrada acima de 1.0 e limitada");
+        check (Fingerprint::toPcm16 (-3.0f) == -32767, "entrada abaixo de -1.0 e limitada");
+        check (Fingerprint::toPcm16 (1.0e6f) == 32767, "entrada enorme nao da overflow");
+        check (Fingerprint::toPcm16 (-1.0e6f) == -32767, "entrada enorme negativa nao da overflow");
+
+        // A regressao central: 0.37 nao pode virar 0. Com o cast no meio da
+        // expressao, o valor era truncado para int16 ANTES de escalar, e 0.37
+        // virava 0 - o sinal sumia.
+        const auto moderate = Fingerprint::toPcm16 (0.37f);
+        check (moderate != 0, "valor moderado nao colapsa para zero");
+        check (std::abs ((double) moderate - 0.37 * Fingerprint::pcm16FullScale) <= 2.0,
+               "valor moderado preserva a escala (0.37 -> perto de 12124)");
+
+        // Proporcionalidade: metade da amplitude e metade da escala.
+        check (Fingerprint::toPcm16 (0.5f) == 16383, "0.5 satura em 16383 (truncamento para zero)");
+
+        // A invariante estrutural: uma rampa completa tem de produzir muitos
+        // niveis distintos. A versao com o bug produzia exatamente tres
+        // (-32767, 0, +32767), entao qualquer limiar acima de 3 a reprova.
+        std::set<int16_t> levels;
+        constexpr int rampPoints = 1001;
+
+        for (int i = 0; i < rampPoints; ++i)
+        {
+            const auto value = -1.0f + 2.0f * (float) i / (float) (rampPoints - 1);
+            levels.insert (Fingerprint::toPcm16 (value));
+        }
+
+        check (levels.size() > (size_t) (rampPoints / 2),
+               "rampa de -1 a 1 preserva resolucao (nao colapsa para poucos niveis)");
+
+        // Monotonicidade: mais amplitude, mais valor. Um sinal invertido aqui
+        // nao acusaria erro em nenhum dos testes acima.
+        bool monotonic = true;
+
+        for (int i = 1; i < rampPoints && monotonic; ++i)
+        {
+            const auto previous = Fingerprint::toPcm16 (-1.0f + 2.0f * (float) (i - 1) / (float) (rampPoints - 1));
+            const auto current  = Fingerprint::toPcm16 (-1.0f + 2.0f * (float) i / (float) (rampPoints - 1));
+            monotonic = current >= previous;
+        }
+
+        check (monotonic, "conversao e monotonica (sinal nao invertido)");
+    }
+
     void testFingerprintCompute()
     {
         std::printf ("\n[fingerprint] calculo offline");
@@ -1196,6 +1261,7 @@ int main()
     testCultures();
     testNumberFormatting();
     testEnglishAndSpanishVariants();
+    testFingerprintPcmConversion();
     testFingerprintCompute();
     testFingerprintStereo();
     testFingerprintRejections();
