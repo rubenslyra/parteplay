@@ -242,6 +242,8 @@ Structural decisions worth knowing:
 ## Documentation
 
 - [`CHANGELOG.md`](CHANGELOG.md) — what changed, per release.
+- [`DEBUG.md`](DEBUG.md) — opening the plugin in a host and reading the window data (`Ctrl+D` overlay,
+  build and install, avoiding the stale-binary trap).
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — conventions, test gate, code of conduct for PRs.
 - [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) — the licences of every component
   statically linked into the binary, and the source offered for each.

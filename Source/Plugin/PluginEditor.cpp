@@ -1513,12 +1513,100 @@ void PlayScoreEditor::paint (juce::Graphics& g)
     g.drawText (Text::t ("PartePlay · Feito para músicos e arranjadores"),
                 footerRow, juce::Justification::centredLeft);
     g.drawText (footerCredit(), footerRow, juce::Justification::centredRight, true);
+
+#if PARTEPLAY_DEBUG_OVERLAY
+    if (debugOverlayVisible)
+        paintDebugOverlay (g);
+#endif
 }
 
 void PlayScoreEditor::timerCallback()
 {
     refreshAllState();
     repaint (headerArea());
+}
+
+#if PARTEPLAY_DEBUG_OVERLAY
+void PlayScoreEditor::paintDebugOverlay (juce::Graphics& g)
+{
+    // Os numeros que decidem se a interface esta legivel. A altura da linha do
+    // popup aparece porque ela nao e um token: a JUCE deriva da altura do combo,
+    // entao muda sozinha quando o combo muda e ninguem ve no Theme.
+    const int popupRowHeight = cultureSelector.getHeight() - 2;
+
+    // Escala global do Desktop, e nao do componente: Component nao expoe a escala
+    // de DPI, e num plugin quem aplica o DPI e o host. Esta e a unica escala que o
+    // JUCE 9 expoe, e e ela que explica um texto pequeno: se o host nao estiver
+    // aplicando DPI, 1000 px logicos sao 1000 px fisicos e o 15 px continua 15 px.
+    const float scale = juce::Desktop::getInstance().getGlobalScaleFactor();
+    const auto* primary = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay();
+
+    juce::StringArray lines;
+
+    lines.add ("PARTEPLAY DEBUG   Ctrl+D fecha");
+    lines.add ("janela    " + juce::String (getWidth()) + " x " + juce::String (getHeight())
+                     + " logico   min " + juce::String (getConstrainer()->getMinimumWidth())
+                     + " x " + juce::String (getConstrainer()->getMinimumHeight()));
+    lines.add ("pixels    " + juce::String (juce::roundToInt (getWidth() * scale))
+                     + " x " + juce::String (juce::roundToInt (getHeight() * scale))
+                     + "   escala " + juce::String (scale, 2));
+    lines.add ("tela      " + (primary != nullptr
+                     ? juce::String (primary->logicalBounds.getWidth(), 0) + " x "
+                           + juce::String (primary->logicalBounds.getHeight(), 0)
+                           + "   escala " + juce::String (primary->scale, 2)
+                           + "   " + juce::String (juce::roundToInt (primary->dpi)) + " dpi"
+                     : juce::String ("?")));
+    lines.add ("versao    " + juce::String (PARTEPLAY_VERSION));
+    lines.add ("idioma    " + juce::String (cultureSelector.getWidth()) + " x "
+                     + juce::String (cultureSelector.getHeight())
+                     + "   popup " + juce::String (popupRowHeight)
+                     + "   cultura " + Text::cultureCode().toStdString());
+    lines.add ("fonte     controle " + juce::String (Theme::Type::control)
+                     + "   corpo " + juce::String (Theme::Type::body)
+                     + "   legenda " + juce::String (Theme::Type::caption)
+                     + "   secao " + juce::String (Theme::Type::section));
+
+    const auto font = Theme::monoFont (12.0f);
+
+    int widest = 0;
+    for (const auto& line : lines)
+        widest = juce::jmax (widest, juce::GlyphArrangement::getStringWidthInt (font, line));
+
+    const auto box = juce::Rectangle<float> (static_cast<float> (margin) + 6.0f,
+                                             static_cast<float> (margin) + 52.0f,
+                                             static_cast<float> (widest) + 20.0f,
+                                             static_cast<float> (lines.size()) * 16.0f + 12.0f)
+                         .toNearestInt();
+
+    g.setColour (juce::Colours::black.withAlpha (0.82f));
+    g.fillRect (box.toFloat());
+    g.setColour (Theme::azure);
+    g.drawRect (box.toFloat(), 1.0f);
+
+    auto textArea = box.toFloat().reduced (10.0f, 6.0f);
+    g.setFont (font);
+    g.setColour (Theme::foreground);
+
+    for (const auto& line : lines)
+    {
+        g.drawText (line, textArea.removeFromTop (16.0f),
+                    juce::Justification::topLeft, false);
+    }
+}
+#endif
+
+bool PlayScoreEditor::keyPressed (const juce::KeyPress& key)
+{
+#if PARTEPLAY_DEBUG_OVERLAY
+    if (key.getKeyCode() == 'd' && key.getModifiers().isCtrlDown())
+    {
+        debugOverlayVisible = ! debugOverlayVisible;
+        repaint();
+        return true;
+    }
+#endif
+
+    return AudioProcessorEditor::keyPressed (key);
 }
 
 void PlayScoreEditor::refreshAllTexts()

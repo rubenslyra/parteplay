@@ -5,6 +5,21 @@
 #include <memory>
 #include <vector>
 
+// Painel de diagnostico da janela (Ctrl+D). Definido aqui, e nao no .cpp, porque o
+// cabecalho e quem precisa da condicao para declarar os membros: se a deteccao
+// vivesse no .cpp, ela chegaria depois deste include e o #if abaixo cairia
+// sempre pelo lado falso, compilando so a definicao e nenhuma declaracao.
+//
+// Em Release o codigo nao e compilado: o binario publicado nao carrega o overlay
+// nem a tecla.
+#if ! defined(PARTEPLAY_DEBUG_OVERLAY)
+ #if JUCE_DEBUG || defined(_DEBUG)
+  #define PARTEPLAY_DEBUG_OVERLAY 1
+ #else
+  #define PARTEPLAY_DEBUG_OVERLAY 0
+ #endif
+#endif
+
 class PlayScoreProcessor;
 class TrackPanel;
 class TransportPanel;
@@ -60,11 +75,16 @@ public:
 
 private:
     void timerCallback() override;
+    bool keyPressed (const juce::KeyPress& key) override;
     void refreshAllTexts();
     void refreshAllState();
     juce::Rectangle<int> headerArea() const;
     juce::Rectangle<int> bodyArea() const;
     juce::Rectangle<int> footerArea() const;
+
+#if PARTEPLAY_DEBUG_OVERLAY
+    void paintDebugOverlay (juce::Graphics& g);
+#endif
 
     PlayScoreProcessor& processor;
 
@@ -89,6 +109,10 @@ private:
     static constexpr int gap          = 14;
     static constexpr int headerHeight = 62;
     static constexpr int footerHeight = 32;
+
+#if PARTEPLAY_DEBUG_OVERLAY
+    bool debugOverlayVisible = false;
+#endif
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PlayScoreEditor)
 };
