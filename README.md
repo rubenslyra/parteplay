@@ -224,6 +224,8 @@ Structural decisions worth knowing:
 
 - [`CHANGELOG.md`](CHANGELOG.md) — what changed, per release.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — conventions, test gate, code of conduct for PRs.
+- [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) — the licences of every component
+  statically linked into the binary, and the source offered for each.
 - [`LICENSE`](LICENSE) — the AGPL-3.0 text.
 
 ## Contributing
@@ -286,5 +288,7 @@ licence; whether PartePlay ships a commercial edition is an open product decisio
 
 - **GNU AGPLv3** — section 13 covers remote (network) interaction; see the
   [JUCE licence](https://juce.com/legal/juce-9-licence/) for the commercial route.
-- **Chromaprint** 1.6.1 (LGPL) — statically linked for the offline fingerprint; notices pending in
-  the distribution.
+- **Chromaprint** 1.6.1 (LGPL 2.1) — statically linked for the offline fingerprint. The source is
+  committed at `Chromaprint-Dependences/chromaprint-1.6.1.tar.gz` and is never patched, so that
+  archive *is* the source of the linked code. Full notices, including the FFmpeg-derived
+  avresample and KissFFT, in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
