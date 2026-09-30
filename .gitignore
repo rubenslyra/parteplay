@@ -1,14 +1,9 @@
 ﻿# Build
 /build
 /cmake-build-*/
-*.cmake
-!**/CMakeLists.txt
-!CMakeLists.txt
-!*.cmake.in
 
 # Generated JUCE code
 /JuceLibraryCode
-JuceDemoRunner/
 
 # Visual Studio
 .vs/
@@ -35,14 +30,27 @@ out/
 *.dll
 *.exe
 *.vst3
-*.vst2
 *.exp
 *.map
 
 # Logs / temporários
 *.log
 *.tmp
+
+# Lixeira do sistema operacional e de ferramentas de terceiros.
+#
+# Estas entram dentro de diretorios que o build cria - inclusive DENTRO do bundle
+# .vst3, onde o Windows grava desktop.ini quando alguem personaliza o icone do
+# pacote no Explorer. Nao ha como versionar isso: e metadata da maquina de quem
+# navegou na pasta. Por isso a defesa real nao e o .gitignore e sim
+# scripts\install-vst3.ps1, que limpa a lista antes de instalar e aborta se
+# alguma coisa chegar ao host.
+desktop.ini
 Thumbs.db
+ehthumbs.db
+.DS_Store
+*.lnk
+*.stackdump
 
 # Env local
 .env
