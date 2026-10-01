@@ -240,6 +240,34 @@ escrita no `CONTRIBUTING.md`: tudo que o usuário percebe é **minor**, só defe
 é **patch**. A aba de metadados é funcionalidade, logo é `0.3.0`, e por isso está
 em branch própria em vez de ser somada à de correções.
 
+### Renumerado para 0.3.0 (01/10/2026)
+
+A tabela acima descreve o estado de 30/09. Em 01/10 a branch foi renomeada e os
+númerosfollowingaram, porque a linha não era mais só correção:
+
+| Branch | Papel | Estado |
+|---|---|---|
+| `release/0.3.0` | linha de manutenção — **minor**, com saída MIDI nova | `5b3ba41`, **PR #8 aberto** |
+| `epic/identidade-do-fonograma` | ISRC/ano/aba de metadados — **0.4.0** | parada, `232dfcd` |
+
+Motivo do minor: o mapa de tempo SMF formato 0 na saída MIDI é funcionalidade
+perceptível, não correção. Patch só para defeito — a política está escrita no
+`CONTRIBUTING.md`, então o próximo conserto da linha é `0.3.1`.
+
+Motivo do 0.4.0 no épico: se `0.3.0` já é minor por causa do MIDI, o número da
+aba de metadados não pode ser o mesmo minor. Um minor por linha. O épico fica
+para `0.4.0`.
+
+**PR #7 foi fechado sozinho** pela renomeação da branch (o GitHub fecha o PR de
+uma branch que some). **PR #8** é o mesmo conteúdo, com a branch certa:
+https://github.com/rubenslyra/parteplay/pull/8
+
+O histórico **não** foi reescrito: sem squash, sem rebase. A única exceção foi o
+commit `72f3e30` → `aefee39`, refeito só para tirar BOM e acrescentar o
+`Signed-off-by`. O assunto antigo `cd0056b` continua no log porque o
+`docs/index.html` de um commit fala do commit que o gerou — reescrever isso
+mentiria sobre o passado.
+
 Escopo acordado: reestruturar `Source/` (feito, junto com `Source/` na branch de
 release); apagar `build\msvc` e manter `build\msvc-2026` (feito); só o domínio de
 identidade do fonograma entra no épico.
@@ -248,6 +276,10 @@ identidade do fonograma entra no épico.
 `develop`, 9 commits. Ubuntu e macOS verdes; Conventional Commits, leitura de
 metadados, versão-única e SonarCloud verdes; **Windows ainda rodando** no momento
 desta escrita.
+
+**PR #8 — https://github.com/rubenslyra/parteplay/pull/8** — `release/0.3.0` →
+`develop`. Mesmo conteúdo, branch renomeada. Título: *release: bring the 0.3.0
+line to develop*.
 
 Sobre Conventional Commits: o gate **falhou na primeira execução** com
 `Cannot find module '@commitlint/config-conventional'`, porque o CLI não traz o
@@ -322,16 +354,17 @@ Ambos gitignored. **Não commitar.** O post do LinkedIn **não** foi publicado.
 - `Text.*` i18n pt-BR / en-GB / en-US / es-ES.
 - `Tests/DomainTests.cpp`: **461 verificações, 0 falhas** (confirmado rodando em
   01/10/2026 no preset `msvc-2026`; 415 antes do corte de silêncio/BARS, 401 em 30/09/2026).
-- Mídia de demonstração em `docs/`: `screenshot-v0.2.2-release.png` substitui o
-  `screenshot-vst-used.png` (removido); `screenshot-v0.2.2-release.mp4` é a demo da
-  v0.2.2, recomprimida de 182,7 MiB para 19,0 MiB com o ffmpeg LGPL embarcado
+- Mídia de demonstração em `docs/`: `screenshot-v0.3.0-release.png` substitui o
+  `screenshot-vst-used.png` (removido); `screenshot-v0.3.0-release.mp4` é a demo da
+  linha 0.3.0, recomprimida de 182,7 MiB para 19,0 MiB com o ffmpeg LGPL embarcado
   (`libopenh264`, resolução nativa, SSIM 0.989) — o original passava o limite de
   100 MiB/arquivo do GitHub. `*.mp4 binary` no `.gitattributes`.
 - `secrets` é um **arquivo** de 311 bytes na raiz do repo (OAuth do GitHub + chave
   AcoustID), não uma pasta. O `.gitignore` cobre os dois casos.
 - `develop` **está no GitHub** e ficou 7 commits à frente de `origin/develop` até
   30/09/2026, quando o **PR #7** (`release/0.2.2` → `develop`) foi aberto para
-  propagar a linha de manutenção. Ver "Branches e governança".
+  propagar a linha de manutenção. Em 01/10 esse PR foi substituído pelo **PR #8**
+  (`release/0.3.0` → `develop`) depois da renomeação. Ver "Branches e governança".
 - `JUCE_ROOT` está definido como variável de ambiente no escopo do usuário
   (`D:\Program Files\JUCE`), então o configure usa o caminho de precedência
   correta e o aviso de "default fixo desta maquina" não aparece mais.
@@ -342,14 +375,67 @@ Ambos gitignored. **Não commitar.** O post do LinkedIn **não** foi publicado.
 - O GPG do Git for Windows (`C:\Program Files\Git\usr\bin\gpg.exe`) **não gera
   chaves**: `keyboxd probably not installed`. Para GPG de verdade, instalar Gpg4win.
 
+## O portão de warnings pagou a conta (01/10/2026)
+
+`5d7366c` transformou warnings em erro nos fontes próprios. No Windows passou
+limpo na hora; **no Linux e no macOS não**, porque GCC e Claw são bem mais
+estritos que o `/W4` do MSVC. O portão nomeou 38Warnings que ninguém estava
+lendo. Commit `5b3ba41` limpa:
+
+| Onde | Aviso | O que era |
+|---|---|---|
+| `MidiMapExporter.cpp` (10) | `-Wsign-conversion` | `writeByte (char)` recebendo `int`/`unsigned char`. Byte escrito é o momento em que um inteiro deixa de ser número e vira octeto — o cast diz isso. |
+| `DomainTests.cpp` (20) | `-Wmissing-prototypes` | As 20 funções de teste estavam no escopo global, com ligação externa. Um binário de teste não devia exportar símbolo que ninguém chama. |
+| `DomainTests.cpp` (7) | `-Wfloat-equal` | 4 queriam tolerância (`parseBpm`, `sourceSampleRate`) → `checkClose`. 3 querem igualdade **exata** (parser devolvendo 0 sem BPM, 0 cents para entrada inválida) → helper `exactly()`. Tolerância nesses 3 enfraqueceria o teste em silêncio. |
+| `FilePlayer.cpp` (1) | `-Wfloat-equal` | `countLeadingSilence` conta silêncio **digital**, sem piso em dB. Exato de propósito; supressão local com o motivo escrito. |
+
+O Sonar também era vermelho, e por dois motivos reais:
+
+- **3 × `cpp:S2193`** (Bugs, Reliability B) — *"do not use a counter of type float"*.
+  Os três laços do `TempoAnalyser` contavam em `double`. A varredura grossa
+  pode pagar a conta hoje porque 0,5 é exato em binário, mas "somar 0,5 quatro
+  centas vezes e chegar em 240,0" é justamente a suposição que quebra quando
+  alguém troca o passo. O índice é o contador agora.
+- **2 × `cpp:S5443`** (Vulnerabilities CRITICAL, Security **D**) — *"publicly
+  writable directories"*. O teste do ffmpeg usava `C:/tmp`. Nada é lido nem
+  escrito ali, mas `/tmp` é de todo mundo no POSIX, e um teste que aponta para lá
+  ensina o leitor que a pasta é confiável. O aviso acertou pelo motivo errado,
+  o que continua sendo um motivo.
+
+Sobram **72 code smells** no Sonar (memória sequencial, `auto` redundante,
+`printf`, `std::print`, lambdas longas). Não são bugs nem vulnerabilidades, não
+seguram o gate, e **não são coisa de patch release**.
+
+> Os três `cpp:S2193` e os dois `cpp:S5443` só apareceram porque a busca por
+> `branch=release/0.3.0` devolveu **zero** issues — a consulta certa é
+> `pullRequest=8`. A leitura anterior "0 vulnerabilidades, 0 hotspots, análise
+> velha" estava errada por causa do parâmetro, não por causa do Sonar.
+
+### Resultado no run `36909409128` — tudo verde ✅
+
+| Check | Tempo |
+|---|---|
+| Windows | 3m07s |
+| macOS | 3m30s |
+| Ubuntu | 8m13s |
+| macOS universal | 7m50s |
+| SonarCloud | 28s |
+| Conventional Commits | 17s |
+| Ler metadados do projeto | 12s |
+| Versão em um único lugar | 10s |
+
+`mergeStateStatus: CLEAN`. Esta é a **primeira vez que as quatro plataformas
+compilam com o portão de warnings ligado** — antes disso o macOS universal era
+`skipping` porque as outras três quebravam antes.
+
 ## Como retomar
 ```powershell
 cd D:\source\DevOUT\parteplay
-gh pr checks 7                       # resultado da matriz de build do PR #7
-git log --oneline origin/develop..develop
+gh pr checks 8                       # resultado da matriz de build do PR #8
+git log --oneline origin/develop..release/0.3.0
 ```
-O próximo passo é o merge do PR #7 em `develop`; depois, `develop` → `main` para
-liberar a 0.2.2. A branch `epic/identidade-do-fonograma` precisa ser atualizada
+O próximo passo é o merge do PR #8 em `develop`; depois, `develop` → `main` para
+liberar a 0.3.0. A branch `epic/identidade-do-fonograma` precisa ser atualizada
 com `develop` antes de começar o trabalho de metadados.
 
 ### Instalação ainda não validada de ponta a ponta
@@ -378,8 +464,9 @@ O hash impresso pelo script tem de bater com o do bundle em `build\msvc-2026`.
    BARS do host.
 3. ~~Push~~ **feito em 01/10/2026**: `release/0.2.2` enviado para `origin`
    (`d0a8d6d..9b1dd14`), com o commit de código (`503d8e8`) e o de docs (`9b1dd14`).
-   Resta acompanhar o **PR #7** (`gh pr checks 7`).
-4. **Propagar**: merge do PR #7 em `develop`; depois `develop` → `main` para liberar
-   a 0.2.2.
+   Substituído pela `release/0.3.0`, enviada em seguida. Acompanhar pelo
+   **PR #8** (`gh pr checks 8`).
+4. **Propagar**: merge do PR #8 em `develop`; depois `develop` → `main` para liberar
+   a 0.3.0.
 5. **Retomar metadados**: atualizar `epic/identidade-do-fonograma` com `develop`
    antes do trabalho de ISRC/ano.
