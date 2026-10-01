@@ -24,9 +24,9 @@ on:
         required: true
         type: string
 
-permissions:
-  contents: write   # anexar assets na release
-  actions: read     # baixar artefatos de OUTRO run (o de CI deste commit)
+# Sem bloco permissions aqui de proposito: cada job recebe so o que usa
+# (githubactions:S8233 / S8264). O job verify nunca escreve nada -- ele so le
+# runs e artefatos -- e o job publish nao precisa de checkout.
 
 concurrency:
   group: release-${{ inputs.tag || github.ref_name }}
@@ -42,6 +42,10 @@ jobs:
   verify:
     name: Conferir a tag
     runs-on: ubuntu-latest
+    # Le runs e artefatos de outro run. Nada e escrito: contents fica em read.
+    permissions:
+      actions: read
+      contents: read
     outputs:
       version: ${{ steps.check.outputs.version }}
       sha: ${{ steps.check.outputs.sha }}
@@ -49,11 +53,24 @@ jobs:
     steps:
       - name: Resolver a tag
         id: resolve
+        # inputs.tag entra por env, nunca por ${{ }} dentro do run
+        # (githubactions:S7630): o valor vem de quem disparou o dispatch, e
+        # expandir isso direto no script entrega o shell a essa pessoa. Por env
+        # ele chega como uma variavel comum, citada como "$TAG_INPUT".
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TAG_INPUT: ${{ inputs.tag }}
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            tag="${{ inputs.tag }}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            tag="$TAG_INPUT"
+          fi
+          # Citar a variavel evita injecao; isto evita que uma tag malformada
+          # chegue ao gh como argumento desconhecido. As duas defesas ficam.
+          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::tag invalida: '$tag' (esperado vMAJOR.MINOR.PATCH)"
+            exit 1
           fi
           # ls-remote pela URL, e nao por "origin": este passo roda antes do
           # checkout, entao nao existe remote configurado para consultar.
@@ -180,6 +197,11 @@ jobs:
     name: Anexar binarios a release
     needs: [ verify ]
     runs-on: ubuntu-latest
+    # Este job escreve: e o unico com contents: write. actions: read vem junto
+    # porque a leitura dos artefatos acontece aqui.
+    permissions:
+      contents: write
+      actions: read
     env:
       GH_TOKEN: ${{ github.token }}
       VERSION: ${{ needs.verify.outputs.version }}
@@ -271,19 +293,36 @@ jobs:
         run: |
           set -euo pipefail
           cd dist
-          for f in *.zip; do
-            sha256sum "$f" > "$f.sha256"
-            echo "  $f  $(cut -d' ' -f1 "$f.sha256")"
+          # Globs com prefixo "./" (githubactions:S6573): um nome de arquivo
+          # começando com "-" seria lido como opcao pelo sha256sum. O sed remove
+          # o "./" do resultado porque o manifesto vai para a pagina de release
+          # e o usuario confere com "sha256sum -c" -- um "./" la e ruido.
+          for f in ./*.zip; do
+            sha256sum "$f" | sed 's|\./||' > "$f.sha256"
           done
-          sha256sum *.zip > SHA256SUMS.txt
+          sha256sum ./*.zip | sed 's|\./||' > SHA256SUMS.txt
+          echo "--- SHA256SUMS.txt ---"
+          cat SHA256SUMS.txt
 
       # A release precisa existir antes. Criar uma release vazia e pior que
       # falhar: as notas deste projeto sao escritas a mao, em ingles, e uma
       # release sem texto e um artefato que ninguem vai querer.
       - name: A release precisa existir
+        # inputs.tag por env, pelo mesmo motivo do job verify
+        # (githubactions:S7630).
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TAG_INPUT: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          tag="${{ inputs.tag || github.ref_name }}"
+          tag="${GITHUB_REF_NAME}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            tag="$TAG_INPUT"
+          fi
+          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::tag invalida: '$tag'"
+            exit 1
+          fi
           if ! gh release view "$tag" >/dev/null 2>&1; then
             echo "::error::nao existe release para a tag $tag"
             echo " crie com as notas em ingles antes:" >&2
@@ -299,8 +338,11 @@ jobs:
           # --clobber reenvia um arquivo que ja estava anexado. Sem isso, um
           # retry depois de uma falha parcial deixa a release com duas versoes
           # do mesmo zip, e o usuario nao tem como saber qual e a boa.
+          #
+          # Os globs levam "./" (githubactions:S6573). Sem o prefixo, um nome
+          # de arquivo começando com "-" seria lido como opcao do gh.
           gh release upload "$TAG_RELEASE" \
-            dist/*.zip dist/*.sha256 dist/SHA256SUMS.txt \
+            ./dist/*.zip ./dist/*.sha256 ./dist/SHA256SUMS.txt \
             --clobber --repo "${{ github.repository }}"
 
       - name: Resumo
@@ -311,7 +353,7 @@ jobs:
             echo ""
             echo "| Arquivo | SHA-256 |"
             echo "| --- | --- |"
-            for f in dist/*.zip; do
+            for f in ./dist/*.zip; do
               echo "| \`$(basename "$f")\` | \`$(cut -d' ' -f1 "$f.sha256")\` |"
             done
             echo ""
