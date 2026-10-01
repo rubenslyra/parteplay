@@ -139,7 +139,7 @@ For a large change, open the issue first and align on the design before writing 
 main                  the released line. Protected: signed commits, code owner review,
                       CI required, no force push.
 develop               the integration line. Everything lands here first.
-release/0.2.2         a maintenance line. Patch fixes only, no functionality.
+release/0.3.0         a maintenance line. Patch fixes only, no functionality.
 epic/<slug>           a body of work too large for one PR. Parks until it is scheduled.
 feat|fix|docs|test|build|chore/<slug>
                       one task, one branch, cut from develop or from its epic.
@@ -191,21 +191,75 @@ mean:
 | Change | Version |
 |---|---|
 | Anything a user can notice, new feature included | minor — `0.3.0` |
-| A defect fix, and only defect fixes | patch — `0.2.2` |
+| A defect fix, and only defect fixes | patch — `0.3.1` |
 
-A `0.2.x` line takes corrections and nothing else. If a fix needs a new behaviour to be
+A `0.3.x` line takes corrections and nothing else. If a fix needs a new behaviour to be
 correct, it is a feature, and it belongs on an `epic/` branch for the next minor. This is why
-the song sheet (ISRC, year, phonogram data) is `0.3.0` on `epic/identidade-do-fonograma` and not
-part of the `0.2.2` line.
+the song sheet (ISRC, ISWC, year, phonogram data) is `0.4.0` on `epic/identidade-do-fonograma`
+and not part of the `0.3.0` line.
 
 The number itself lives only in `project(PartePlay VERSION x.y.z)`, and the bundle version is
 derived from it, so the release and the artefact cannot drift. `CHANGELOG.md` records which
 version each entry belongs to, and a release means moving `[Não publicado]` to a version
 heading and tagging it.
 
-The published build is `v0.2.0-rc.1`. Stable `0.2.0` was never released, which is why the next
-number is `0.2.2` and not `0.2.1`: numbering the line as a patch is what makes the boundary
-readable to anyone picking up a task.
+The published build is `v0.2.0-rc.1`. Stable `0.2.0` was never released, and neither was
+`0.2.1`, which is why the next number is `0.3.0`.
+
+**A line is renumbered while it is still a branch, never after the tag.** A tag is a promise
+about a tree; renaming a version after the tag means the artefact people downloaded points at
+a number that no longer exists, and the changelog ends up with two releases claiming the same
+range. Renumbering before the tag costs one line in `CMakeLists.txt` and the reconciliation of
+the four documents that quote the number. That is why the `0.2.2` line became `0.3.0`: it was
+opened as a patch by scope, then took user-visible work — the external tempo pipeline, leading
+silence removal, bar sync to the host meter, the BPM source button, progress on load, and a MIDI
+export that now carries a tempo map — and the rule above has no honest way to call that a patch.
+
+### Patch release policy
+
+A patch release is what ships when something already released does not behave as documented.
+The line it is cut from is frozen except for corrections.
+
+**A patch contains only:**
+
+- a fix for a defect that can be described as "before this, a user hit X; now they do not";
+- a fix for a defect introduced by the previous patch of the same line;
+- a change that makes the product *stop* doing something wrong, not a change that makes it do
+  something new;
+- documentation and CI corrections that state the truth about the code.
+
+**A patch never contains:**
+
+- a new control, a new panel, a new output or a new file the user did not have to click before;
+- a change to what the plugin writes — exported files, the parameter contract, state layout;
+- a new dependency, or a new binary shipped to the user's machine;
+- a reformat, a rename, or a refactor that does not exist to serve a fix. Those go in with the
+  next minor.
+
+The test is not "is it small" and not "is it urgent". It is **would a user on the previous
+patch notice anything they did not have before**. If yes, it is a minor, and it waits.
+
+**Cutting one:**
+
+1. Freeze the line. No new work lands on `release/0.x` except fixes.
+2. Every commit since the last tag carries a `Signed-off-by` and a Conventional Commits subject
+   whose type is `fix`, `build`, `ci`, `docs`, `test` or `chore`. A `feat` subject on the line is
+   the signal that the line has to be renumbered instead — catch it at review, not at the tag.
+3. Green on the whole platform matrix for the merge to `develop`, and green again for
+   `develop` → `main`. `main` is protected: signed commits, code owner review, required CI.
+4. Move `[Não publicado]` in the changelog to the version heading, reconciling every document
+   that quotes the number — README, the badge, `docs/index.html`, this file.
+5. Tag it. `tag.gpgsign` is on, so the tag is signed too.
+6. Verify the published artefact rather than the local one: the SHA-256 computed locally must
+   equal the SHA-256 of the asset after upload, and the bundle must contain
+   `GetPluginFactory` and an intact `moduleinfo.json`. A checksum that was only checked before
+   the upload proves the upload did not corrupt it, not that GitHub served the right bytes.
+7. Move the download button and the Pages release link to the new tag. They point at the last
+   published artefact, not at the working tree.
+
+Until the tag exists the number is provisional, and the branch name carries it
+(`release/0.3.1`). Renaming the branch to match a renumbered version is part of step 4, not an
+extra step.
 
 ## Not accepted
 
