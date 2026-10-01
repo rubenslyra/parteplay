@@ -73,12 +73,12 @@ footer { margin-top: 48px; border-top: 1px solid var(--line); padding-top: 18px;
 
 <header>
   <div>
-    <span class="badge"><img alt="Version" src="https://img.shields.io/badge/version-0.2.0-blue"></span>
+    <span class="badge"><img alt="Version" src="https://img.shields.io/badge/version-0.3.0-blue"></span>
     <span class="badge"><img alt="Format" src="https://img.shields.io/badge/format-VST3-ff5722"></span>
     <span class="badge"><img alt="Build matrix" src="https://img.shields.io/badge/build-Windows%20%7C%20Linux%20%7C%20macOS%20universal-0078d4?logo=github"></span>
     <span class="badge"><img alt="Host" src="https://img.shields.io/badge/host-MuseScore%204%20%2F%20DAW-8a2be2"></span>
     <span class="badge"><img alt="JUCE" src="https://img.shields.io/badge/JUCE-9.0.2-3d2b8a"></span>
-    <span class="badge"><img alt="Tests" src="https://img.shields.io/badge/tests-325%20checks%20%E2%9C%85-4c9a2c"></span>
+    <span class="badge"><img alt="Tests" src="https://img.shields.io/badge/tests-461%20checks%20%E2%9C%85-4c9a2c"></span>
     <span class="badge"><img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0-lightgrey"></span>
     <span class="badge"><img alt="CI" src="https://github.com/rubenslyra/parteplay/actions/workflows/ci.yml/badge.svg"></span>
   </div>
@@ -101,7 +101,7 @@ footer { margin-top: 48px; border-top: 1px solid var(--line); padding-top: 18px;
 </div>
 
 <figure class="shot">
-  <img src="screenshot-vst-used.png"
+  <img src="screenshot-v0.3.0-release.png"
        alt="PartePlay loaded as an effect in MuseScore 4, showing the detected tempo and bar count for the loaded reference recording.">
   <figcaption>PartePlay loaded as an effect in MuseScore 4, with the reference recording analysed and ready to play in sync with the score.</figcaption>
 </figure>
@@ -135,7 +135,7 @@ instead of its own, so the alignment problem disappears.
 <h2>Build from source</h2>
 <pre><code>cmake --preset msvc
 cmake --build --preset msvc --config Release
-ctest --preset msvc    # 325 checks, 0 failures</code></pre>
+ctest --preset msvc    # 461 checks, 0 failures</code></pre>
 <p>Presets also cover <code>ninja</code>, <code>linux</code>, <code>macos</code> and
 <code>macos-universal</code> (x86_64 + arm64). Requires CMake 3.22+, a C++17 toolchain and
 JUCE 9.0.2 (via <code>JUCE_ROOT</code>). CI builds and tests Windows, Linux and macOS; the
@@ -161,7 +161,7 @@ install scripts are PowerShell, so they are Windows-only.</p>
 <p>
 Conventions, the test gate and the PR contract live in
 <a href="https://github.com/rubenslyra/parteplay/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>.
-Every PR must pass the 325-check suite on three platforms and carry a <code>Signed-off-by</code>
+Every PR must pass the 461-check suite on three platforms and carry a <code>Signed-off-by</code>
 (DCO). All UI strings go through the four-column locale table.
 </p>
 

@@ -72,3 +72,11 @@ agent.md
 # trabalho, nunca entra no repositorio nem em release.
 linkedin-*.md
 social-*.md
+
+# Binarios da pipeline externa de andamento. A regra geral acima ignora
+# *.exe/*.dll, mas estes sao versionados de proposito: o localizador
+# (Source/Analysis/ExternalBpm.cpp) procura resources/bin em tempo de execucao e
+# o plugin nao tem como baixa-los sozinho. Proveniencia e licencas em
+# resources/bin/README.md e THIRD_PARTY_NOTICES.md.
+!resources/bin/*.exe
+!resources/bin/*.dll

@@ -6,6 +6,7 @@
 
 # Binarios: nunca tocar.
 *.png      binary
+*.mp4      binary
 *.ico      binary
 *.icns     binary
 *.vst3     binary

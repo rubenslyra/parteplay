@@ -1,16 +1,16 @@
-﻿# PartePlay
+# PartePlay
 
 [![Status](https://img.shields.io/badge/status-in%20development-c94f4d)](CHANGELOG.md)
-[![Version](https://img.shields.io/badge/version-0.2.0-blue)](CMakeLists.txt)
+[![Version](https://img.shields.io/badge/version-0.3.0-blue)](CMakeLists.txt)
 [![Build matrix](https://img.shields.io/badge/build-Windows%20%7C%20Linux%20%7C%20macOS%20universal-0078d4?logo=github)](https://github.com/rubenslyra/parteplay/actions/workflows/ci.yml)
-[![Format](https://img.shields.io/badge/format-VST3-ff5722)](Source/PluginProcessor.cpp)
-[![Host](https://img.shields.io/badge/host-MuseScore%204%20%2F%20DAW-8a2be2)](Source/PluginProcessor.cpp)
-[![Audio](https://img.shields.io/badge/audio-WAV%20%7C%20FLAC%20%7C%20OGG%20%7C%20MP3-4c9a2c)](Source/FilePlayer.cpp)
+[![Format](https://img.shields.io/badge/format-VST3-ff5722)](Source/Plugin/PluginProcessor.cpp)
+[![Host](https://img.shields.io/badge/host-MuseScore%204%20%2F%20DAW-8a2be2)](Source/Plugin/PluginProcessor.cpp)
+[![Audio](https://img.shields.io/badge/audio-WAV%20%7C%20FLAC%20%7C%20OGG%20%7C%20MP3-4c9a2c)](Source/Audio/FilePlayer.cpp)
 [![JUCE](https://img.shields.io/badge/JUCE-9.0.2-3d2b8a?logo=juce)](CMakeLists.txt)
 [![Language](https://img.shields.io/badge/C%2B%2B-C%2B%2B17-00599c?logo=c%2B%2B&logoColor=white)](CMakeLists.txt)
 [![CMake](https://img.shields.io/badge/CMake-3.22%2B-064f8c?logo=cmake&logoColor=white)](CMakePresets.json)
-[![Tests](https://img.shields.io/badge/tests-325%20checks%20%E2%9C%85-4c9a2c)](Tests/DomainTests.cpp)
-[![i18n](https://img.shields.io/badge/i18n-pt--BR%20%7C%20en--GB%20%7C%20en--US%20%7C%20es--ES-0f7cbf)](Source/Text.cpp)
+[![Tests](https://img.shields.io/badge/tests-461%20checks%20%E2%9C%85-4c9a2c)](Tests/DomainTests.cpp)
+[![i18n](https://img.shields.io/badge/i18n-pt--BR%20%7C%20en--GB%20%7C%20en--US%20%7C%20es--ES-0f7cbf)](Source/Ui/Text.cpp)
 [![CI](https://github.com/rubenslyra/parteplay/actions/workflows/ci.yml/badge.svg)](https://github.com/rubenslyra/parteplay/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-lightgrey)](LICENSE)
 
@@ -19,27 +19,35 @@ practice along with the real performance instead of a metronome. It works with M
 DAW, supports **training speed and bar-based looping**, computes a **local audio fingerprint**
 (Chromaprint/AcoustID-compatible), and is **fully localized** in pt-BR, en-GB, en-US and es-ES.
 
-**Version:** 0.2.0 · **Platform:** Windows 10/11, Ubuntu, macOS (CI-verified build matrix) · **Format:** VST3 · **Stack:** C++17 / JUCE 9.0.2 / CMake
+**Version:** 0.3.0 · **Platform:** Windows 10/11, Ubuntu, macOS (CI-verified build matrix) · **Format:** VST3 · **Stack:** C++17 / JUCE 9.0.2 / CMake
 
 <p align="center">
-  <img src="docs/parteplay-logo.png" width="140" alt="PartePlay">
+  <img src="docs/parteplay-logo.png" width="170" alt="PartePlay">
 </p>
 
 ## Download
 
-**v0.2.0-rc.1 — release candidate.** The plugin is free to download and test now, but it is still in
-development: expect rough edges, and please [open an issue](https://github.com/rubenslyra/parteplay/issues/new/choose)
-if something breaks. The stable release follows the RC once the feedback settles.
+**0.3.0 is published as source.** The `develop`/`main` tree and the `v0.3.0` tag carry the current
+code; the per-platform binaries are built and tested by CI on every push, and a packaged build for
+each platform is not attached to the tag yet.
+
+The last **packaged** build is the **v0.2.0-rc.1 release candidate** — still the download below.
+It is older than this tree: it does not have the external tempo pipeline, the leading-silence trim
+or the MIDI time-map export.
 
 **[⬇ Download PartePlay VST3 — v0.2.0-rc.1](https://github.com/rubenslyra/parteplay/releases/tag/v0.2.0-rc.1)**
 
-AGPL-3.0 · free and open-source · VST3 for Windows, Linux and macOS. The plugin is unsigned, so your
+To build 0.3.0 yourself, follow [Build](#build) — it is four platforms and one C++ toolchain.
+
+AGPL-3.0 — free and open-source — VST3 for Windows, Linux and macOS. The plugin is unsigned, so your
 host will ask you to confirm it the first time you load it — see [Install](#install).
 
-![PartePlay loaded as an effect in MuseScore 4, with the reference recording analysed](docs/screenshot-vst-used.png)
+![PartePlay loaded as an effect in MuseScore 4, with the reference recording analysed](docs/screenshot-v0.3.0-release.png)
 
 *PartePlay loaded as an effect in MuseScore 4, with the reference recording analysed and ready to
 play in sync with the score.*
+
+[▶ Watch the v0.3.0 demo](docs/screenshot-v0.3.0-release.mp4)
 
 ---
 
@@ -64,7 +72,11 @@ is limited to compensating the tuning reference against the tuning detected in t
 - **Training mode** — speed from 50% to 150% and a bar-based loop aligned to the detected meter,
   keeping playback in sync.
 - **Tempo analysis** — detected BPM, meter (3/4 or 4/4), bar count and tuning, with **MIDI 1.0**
-  time-map export for MuseScore and DAWs.
+  time-map export for MuseScore and DAWs. An optional external pipeline (`ffmpeg` + SoundStretch,
+  bundled under `resources/bin/`) refines the tempo with a different algorithm than the native
+  analyser; the native `TempoAnalyser` is the default and the source of truth.
+- **Leading-silence trim** — the reference track starts at its first non-zero sample instead of
+  carrying the silence a lot of recordings open with, so playback does not sit behind the score.
 - **Offline fingerprint** — computes an AcoustID-compatible fingerprint locally (no cloud, no key
   embedded in the binary). Online lookup is intentionally disabled for now; see
   ["Identification"](#identification) below.
@@ -92,12 +104,18 @@ never from the binary.
 
 ## Build
 
+The default preset is `msvc-2026` (Visual Studio 2026). If you only have the 2022
+Build Tools, use the `msvc` preset instead — it is the same project, a different
+toolchain path.
+
 ```powershell
-cmake --preset msvc
-cmake --build --preset msvc --config Release
+cmake --preset msvc-2026
+cmake --build --preset msvc-2026 --config Release
 ```
 
-Or the script (configure + build in one step):
+Or the script (configure + build in one step, same preset as the installer — mixing
+presets between the two is how a stale plugin ends up in the host without anyone
+noticing):
 
 ```powershell
 .\scripts\build.ps1 -Configuration Release
@@ -106,21 +124,23 @@ Or the script (configure + build in one step):
 Artifact:
 
 ```
-build/msvc/PartePlay_artefacts/Release/VST3/PartePlay.vst3
+build/msvc-2026/PartePlay_artefacts/Release/VST3/PartePlay.vst3
 ```
 
-The presets also cover `ninja`, `linux`, `macos` and `macos-universal` (x86_64 + arm64).
+The configure presets cover `ninja`, `linux`, `macos` and `macos-universal`
+(x86_64 + arm64). The binary bundle itself is platform-independent CMake —
+`ExternalBpm` is the one deliberate exception, see [Known limitations](#known-limitations).
 
 ## Tests
 
 The domain and text layers have an automated suite (no UI, no audio thread) wired into CTest:
 
 ```powershell
-cmake --build --preset msvc --config Release --target PartePlayTests
-ctest --preset msvc
+cmake --build --preset msvc-2026 --config Release --target PartePlayTests
+ctest --preset msvc-2026 -C Release
 ```
 
-**325 checks, 0 failures.** The suite is organized so that musical correctness is enforced by code,
+**461 checks, 0 failures.** The suite is organized so that musical correctness is enforced by code,
 not by ear:
 
 | Group                | What it locks                                                                                                                                              |
@@ -136,10 +156,12 @@ not by ear:
 
 ## Install
 
-The install scripts are PowerShell, so this section is Windows-only — the build
-itself is cross-platform (see Requirements).
-
 Close MuseScore (or the DAW) before installing — the binary is locked while the plugin is loaded.
+
+### Windows
+
+The install scripts are PowerShell, so the automated path is Windows-only. The bundle itself is
+built and tested on all four CI targets.
 
 ```powershell
 .\scripts\install-vst3.ps1
@@ -154,6 +176,28 @@ The MuseScore notation template is installed separately:
 ```powershell
 .\scripts\install-musescore-template.ps1
 ```
+
+### Linux and macOS
+
+There is no installer script yet — copy the bundle into the VST3 folder of the user. Copy the
+`.vst3` **directory**, not the files inside it; a bundle with loose files at the root is not a
+bundle and hosts will ignore it.
+
+| Platform | Destination |
+| --- | --- |
+| Linux | `~/.vst3/PartePlay.vst3` |
+| macOS (universal) | `~/Library/Audio/Plug-Ins/VST3/PartePlay.vst3` |
+
+```bash
+# Linux, after building with the `linux` preset
+cp -R build/linux/PartePlay_artefacts/Release/VST3/PartePlay.vst3 ~/.vst3/
+
+# macOS, after building with the `macos` preset (or `macos-universal` for x86_64 + arm64)
+cp -R build/macos/PartePlay_artefacts/Release/VST3/PartePlay.vst3 ~/Library/Audio/Plug-Ins/VST3/
+```
+
+The plugin is **unsigned** on every platform, so the host asks you to confirm it the first time it
+loads the bundle.
 
 ## Usage
 
@@ -179,23 +223,42 @@ All parameters are persisted in the host session and available for automation.
 
 ## Architecture
 
+`Source/` is grouped by **module**, not by layer or by file type. Each folder answers one
+question, and every file in it answers that question:
+
 ```
 Source/
-  PluginProcessor   — core: parameters, host sync, playback pipeline
-  PluginEditor      — the 5:4 editor (panels, LookAndFeel, layout, locale selector)
-  Theme.h           — visual tokens and painting helpers
-  FilePlayer        — loading, playback, loop, waveform peaks
-  PitchShifter      — offline pitch-shift engine (isolated, replaceable; used only for
-                      reference-vs-detected tuning compensation)
-  TempoAnalyser     — BPM, meter, bars and tuning detection
-  Tuning.*          — music domain: reference notes, cents, playback ratio (single source)
-  FingerprintWorker — Chromaprint fingerprinting off the audio thread, async state machine
-  MidiMapExporter   — MIDI 1.0 time-map export
-  ParameterIds.h    — parameter identifiers (single source)
-  Text.*            — i18n (pt-BR | en-GB | en-US | es-ES) and text interpolation
+  Core/            identifiers and pure maths, with no JUCE and no host
+    ParameterIds.h    — parameter identifiers (single source)
+    Tuning.*          — music domain: reference notes, cents, playback ratio (single source)
+  Audio/           the audio path
+    FilePlayer.*      — loading, playback, loop, waveform peaks
+    PitchShifter.*    — offline pitch-shift engine (isolated, replaceable; used only for
+                        reference-vs-detected tuning compensation)
+    Waveform.h        — min/max peak reduction, the data behind the waveform display
+  Analysis/        what measures the file
+    TempoAnalyser.*   — BPM, meter, bars and tuning detection
+    FingerprintWorker.* — Chromaprint fingerprinting off the audio thread, async state machine
+  Ui/              presentation
+    Text.*            — i18n (pt-BR | en-GB | en-US | es-ES) and text interpolation
+    Theme.h           — visual tokens and painting helpers
+  Plugin/          the VST3 shell, the part the host sees
+    PluginProcessor.* — parameters, host sync, playback pipeline
+    PluginEditor.*    — the 5:4 editor (panels, LookAndFeel, layout, locale selector)
+  Export/
+    MidiMapExporter.* — MIDI 1.0 time-map export
 Tests/
-  DomainTests.cpp   — 325 checks: tuning, encoding, i18n, fingerprint, player publication
+  DomainTests.cpp   — 461 checks: tuning, encoding, i18n, fingerprint, tempo, player publication
 ```
+
+`Waveform.h` sits in `Audio/` and not in `Ui/`, because it is derived data — min/max pairs
+over the decoded buffer — produced by `FilePlayer` and drawn by the editor. It is neither
+one nor the other.
+
+Every module folder is on the include path, so cross-module includes stay
+`#include "Tuning.h"` with no path. The trade is explicit: the folder structure *documents*
+the dependency direction, it does not enforce it. Enforcing it would mean a library target
+per module, which for fourteen files is more scaffolding than code.
 
 Structural decisions worth knowing:
 
@@ -217,12 +280,18 @@ Structural decisions worth knowing:
 - The track **does not appear** in MuseScore's instrument list; nothing is injected into the score.
 - Direct transport injection is bounded by the VST3 API (Slave/Master relations) — hence the `.mid`
   time-map export.
+- The bundled `ffmpeg` and `soundstretch` binaries in `resources/bin/` are **Windows builds**. The
+  external tempo pipeline is therefore unavailable on Linux and macOS, where the native
+  `TempoAnalyser` does the work on its own — which is the intended behaviour, not a defect. Tools
+  can also be pointed elsewhere with the `PARTEPLAY_TOOLS_DIR` environment variable.
 - The audio path itself (sync under time-stretch, vocoder) has no automated tests and still relies
   on host validation.
 
 ## Documentation
 
 - [`CHANGELOG.md`](CHANGELOG.md) — what changed, per release.
+- [`DEBUG.md`](DEBUG.md) — opening the plugin in a host and reading the window data (`Ctrl+D` overlay,
+  build and install, avoiding the stale-binary trap).
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — conventions, test gate, code of conduct for PRs.
 - [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) — the licences of every component
   statically linked into the binary, and the source offered for each.
@@ -253,12 +322,43 @@ licence; whether PartePlay ships a commercial edition is an open product decisio
 | Software architecture        | Centralized music-domain model (`Tuning`, `ParameterIds`), replaceable engine seams, thread-safety decisions, feasibility analysis against real VST3 constraints |
 | C++ / JUCE / audio DSP       | Phase vocoder, host-synced player, tempo analyser, offline fingerprint worker, JUCE editor                                                                       |
 | VST3 / MuseScore integration | SDK contract, Slave/Master transport role, MIDI 1.0 time-map export, MuseScore 4 notation template                                                               |
-| UI/UX & design system        | 5:4 editor redesign, token system (`Source/Theme.h`), panels, visual identity                                                                                    |
+| UI/UX & design system        | 5:4 editor redesign, token system (`Source/Ui/Theme.h`), panels, visual identity                                                                                    |
 | Product, roadmap & docs      | Scope and prioritization, internationalization, handoff, this README                                                                                             |
 | DevOps / build / release     | CMake presets, install scripts with hash verification, CTest suite, multi-platform CI                                                                            |
 
 - GitHub: [github.com/rubenslyra/parteplay](https://github.com/rubenslyra/parteplay)
 - LinkedIn: [linkedin.com/in/rubenslyra](https://www.linkedin.com/in/rubenslyra)
+
+---
+
+## Credits and technologies
+
+The same list is shown inside the plugin, behind the **i** button next to the language
+selector, and it follows the active UI language.
+
+**Audio libraries**
+
+- **SoundTouch / SoundStretch** — open-source audio processing by Olli Parviainen
+  (Finland); tempo and beat analysis. <https://www.surina.net/soundtouch/>
+- **FFmpeg / FFprobe / libavcodec** — cross-platform multimedia system started by
+  Fabrice Bellard in 2000; container and codec conversion. <https://ffmpeg.org/>
+- **Chromaprint** — local acoustic fingerprinting. <https://acoustid.org/chromaprint>
+
+**Interface and standards**
+
+- **JUCE** — cross-platform C++ framework for audio plugins; architecture conceived by
+  Julian "Jules" Storer. <https://juce.com/>
+- **Steinberg VST3** (`IComponent` / `IEditController`) — plugin specification for
+  real-time compatibility with audio hosts. <https://steinbergmedia.github.io/vst3_doc/>
+
+**Build environment**
+
+- Microsoft Visual Studio 2026 and Visual Studio Code, **C++17**.
+  <https://visualstudio.microsoft.com/>
+
+Every third-party component is listed, with its licence, in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). PartePlay itself is distributed
+under the GNU AGPL-3.0.
 
 ---
 
@@ -270,11 +370,16 @@ licence; whether PartePlay ships a commercial edition is an open product decisio
 | ------------------------------------------------------------------ | ------------------------------------------------------------ |
 | **ISO 16:1975** — _Acoustics — Standard tuning frequency (440 Hz)_ | `Tuning::defaultReferenceHz = 440.0`, `Tuning::centsBetween` |
 | **MIDI 1.0 — RP-001** (MMA / AMEI)                                 | The exported time-map file format in `MidiMapExporter`       |
+| **IEEE 754-2019** (ISO/IEC/IEEE 60559)                             | Double-precision BPM/cents (`TempoAnalyser`, `Tuning`); decimals in `Text::number` |
 | **VST3 SDK** (Steinberg)                                           | Plugin interface, transport contract, Slave/Master role      |
 | **C++17** (ISO/IEC 14882:2017)                                     | `cxx_std_17`, no extensions                                  |
 
 ### Technical bibliography
 
+- **BPM and timing references** — consolidated in
+  [`referencias_bibliograficas_bpm.md`](referencias_bibliograficas_bpm.md):
+  MIDI 1.0/2.0, Roads (_The Computer Music Tutorial_), Huber/Runstein, IEEE 754,
+  Boulanger/Lazzarini, the VST3 API and Campbell/Greated (cents vs. BPM).
 - **JUCE 9.0.2** — _The JUCE Framework_. [Docs](https://docs.juce.com/master/) and
   [licensing](https://juce.com/legal/juce-9-licence/).
 - **Laroche, J.; Dolson, M.** — "Improved phase vocoder time-scale modification of audio".
