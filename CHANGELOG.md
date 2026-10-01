@@ -6,11 +6,16 @@ Todas as mudanças relevantes do PartePlay. O formato segue
 
 ## [Não publicado]
 
-Próxima versão: **0.3.0** (o número mora só em
-`project(PartePlay VERSION x.y.z)`, no `CMakeLists.txt`).
+Próxima versão: **0.3.1** se for só correção de defeito, **0.4.0** se entrar
+funcionalidade — a regra está em `CONTRIBUTING.md` e o número mora só em
+`project(PartePlay VERSION x.y.z)`, no `CMakeLists.txt`.
 
-A 0.2.0 estável nunca foi publicada: o que existe é `v0.2.0-rc.1`, cortada de
-`4113f13`. Esta seção é o conteúdo da 0.3.0.
+## [0.3.0] — 2026-10-01
+
+A 0.2.0 estável nunca foi publicada: o que existia era `v0.2.0-rc.1`, cortada de
+`4113f13`. Esta é a primeira versão com tag de código dentro dos repositórios de
+instalação, e ela é distribuída como fonte — a CI compila e testa as quatro
+plataformas a cada push, mas nenhum binário empacotado está anexado a esta tag.
 
 **Por que 0.3.0 e não 0.2.2.** A linha foi aberta como `0.2.2`, *patch* por escopo:
 corrigir o que já existia, sem funcionalidade nova. Ela deixou de ser patch no
@@ -99,6 +104,9 @@ de direitos e ainda não entraram em nenhuma linha.
   ou número não reconciliado significam trabalho abandonado no meio.
 - **Seção de higiene em `CONTRIBUTING.md`** — o que conta como sujeira aqui, e
   por quê cada item é um defeito e não um detalhe de estilo.
+- **Preset `msvc-2026`** no `CMakePresets.json`, para Visual Studio 18 2026
+  Enterprise, ao lado do `msvc` existente — que é preservado, com histórico
+  próprio em `build/msvc`.
 
 ### Removido
 
@@ -213,22 +221,16 @@ de direitos e ainda não entraram em nenhuma linha.
 - **O aviso de administrador não impedia a instalação.** Era um `Write-Warning`
   seguido de `exit 1`, que devolve sucesso a quem chamou `build.ps1`. Passa a ser
   `throw`.
-
-### Alterado
-
 - **`C4244` corrigido nos dois pontos da issue #2** — o estreitamento
   `double`→`float` na janela de Hann de `TempoAnalyser::estimateTuningCents`
   (a fase permanece `double`; o estreitamento acontece uma vez, explícito, em
   vez de vazar pela atribuição) e o `float`→`int16_t` do PCM do fingerprint.
   Em ambos os casos a conversão deixa de ser implícita e passa a ser uma
   decisão visível.
-- **Novo preset `msvc-2026`** no `CMakePresets.json`, para Visual Studio 18 2026
-  Enterprise, ao lado do `msvc` existente — que é preservado, com histórico
-  próprio em `build/msvc`.
 
 ## [0.1.0] — 2026-09-03
 
-Primeira versão pública. (O que mudou depois dela está em [Não publicado], inclusive a
+Primeira versão pública. (O que mudou depois dela está em [0.3.0], inclusive a
 remoção da transposição por instrumento e a troca do i18n de três idiomas para quatro.)
 
 ### Adicionado
