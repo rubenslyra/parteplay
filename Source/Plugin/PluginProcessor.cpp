@@ -26,6 +26,10 @@ PlayScoreProcessor::PlayScoreProcessor()
 
 PlayScoreProcessor::~PlayScoreProcessor()
 {
+    // Fecha a porta para jobs/async em voo antes de esperar por eles: um job que
+    // ja passou do check de vida termina, mas removeAllJobs espera por ele.
+    aliveFlag->store (false, std::memory_order_relaxed);
+    loadPool.removeAllJobs (true, 4000);
     stopTimer();
 }
 
@@ -84,6 +88,10 @@ void PlayScoreProcessor::timerCallback()
     // e assim a message thread nunca disputa com o áudio. O setPlaybackBuffer
     // recebe o ponteiro de um buffer já transformado, não o player.
     current->setLoop (loopOn, loopFrom, loopTo);
+
+    // A metrica do host manda no BARS e no loop; sem declaracao (0), o compasso
+    // estimado do audio continua valendo. So leitura de atomico, sem lock.
+    current->setMeterOverride (hostTimeSigNumerator.load (std::memory_order_relaxed));
 
     std::shared_ptr<const juce::AudioBuffer<float>> source = current->getSourceBuffer();
     const double basePitch = current->getDetectedTuningHz();
@@ -175,6 +183,30 @@ void PlayScoreProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         transportSampleRate.store (getSampleRate(), std::memory_order_relaxed);
     }
 
+    // Transporte do host para diagnostico de integracao: o que o DAW declara,
+    // nao o que o audio contem. Guardado mesmo com o transporte parado; zero
+    // marca "nao informado", para nao confundir ausencia com um BPM real.
+    if (const auto bpm = info.getBpm())
+        hostBpm.store (*bpm, std::memory_order_relaxed);
+    else
+        hostBpm.store (0.0, std::memory_order_relaxed);
+
+    if (const auto sig = info.getTimeSignature())
+    {
+        hostTimeSigNumerator.store (sig->numerator, std::memory_order_relaxed);
+        hostTimeSigDenominator.store (sig->denominator, std::memory_order_relaxed);
+    }
+    else
+    {
+        hostTimeSigNumerator.store (0, std::memory_order_relaxed);
+        hostTimeSigDenominator.store (0, std::memory_order_relaxed);
+    }
+
+    if (const auto ppq = info.getPpqPosition())
+        hostPpqPosition.store (*ppq, std::memory_order_relaxed);
+    else
+        hostPpqPosition.store (0.0, std::memory_order_relaxed);
+
     if (! playing || getSampleRate() <= 0.0)
     {
         reachedEnd.store (false, std::memory_order_relaxed);
@@ -204,30 +236,86 @@ void PlayScoreProcessor::resetPlaybackState()
     reachedEnd.store (false, std::memory_order_relaxed);
 }
 
-void PlayScoreProcessor::loadAudioFile (const juce::File& file)
+void PlayScoreProcessor::beginLoadAudioFile (const juce::File& file)
 {
-    // Decodificação e análise fora do lock, e fora do caminho de áudio: só a
-    // publicação do ponteiro é crítica. Quem estiver tocando mantém o antigo
-    // vivo pelo próprio snapshot e termina o bloco sem notar a troca.
-    auto newPlayer = std::make_shared<FilePlayer>();
-    newPlayer->loadFromFile (file);
+    // Geração: um carregamento novo invalida o anterior. O job antigo continua
+    // rodando (nao da para abortar no meio do decode), mas para de publicar.
+    const int generation = loadGeneration.fetch_add (1, std::memory_order_relaxed) + 1;
 
-    if (! newPlayer->hasAudio())
-        return;
+    loadInProgress.store (true, std::memory_order_relaxed);
+    loadProgress.store (0.0f, std::memory_order_relaxed);
+    loadStage.store (static_cast<int> (FilePlayer::LoadStage::preparing), std::memory_order_relaxed);
 
+    const auto alive = aliveFlag;
+
+    loadPool.addJob ([this, file, generation, alive]
     {
-        const juce::ScopedLock sl (stateLock);
-        loadedFileName = newPlayer->getSourceFileName();
-        reachedEnd.store (false, std::memory_order_relaxed);
-    }
+        auto newPlayer = std::make_shared<FilePlayer>();
 
-    std::atomic_store (&player, std::move (newPlayer));
-    ++fileGeneration;
+        // O callback roda nesta thread de fundo. So toca nos atomicos e so
+        // enquanto esta geracao e a instancia ainda valem.
+        newPlayer->loadFromFile (file, [this, generation, alive] (float fraction, FilePlayer::LoadStage stage)
+        {
+            if (! alive->load (std::memory_order_relaxed)
+                || loadGeneration.load (std::memory_order_relaxed) != generation)
+                return;
 
-    // A impressão digital sai daqui, e não do player: é trabalho de fundo e
-    // não pode atrasar o carregamento. Um novo start cancela o anterior, então
-    // trocar de arquivo rapidinho não empilha cálculos.
-    fingerprintWorker.start (file);
+            loadProgress.store (fraction, std::memory_order_relaxed);
+            loadStage.store (static_cast<int> (stage), std::memory_order_relaxed);
+        });
+
+        if (! alive->load (std::memory_order_relaxed)
+            || loadGeneration.load (std::memory_order_relaxed) != generation)
+            return;
+
+        // A publicacao acontece na message thread, como o resto do estado do
+        // player: a thread de audio le por atomic_load e nao espera.
+        juce::MessageManager::callAsync ([this, file, generation, newPlayer, alive]() mutable
+        {
+            if (! alive->load (std::memory_order_relaxed)
+                || loadGeneration.load (std::memory_order_relaxed) != generation)
+                return;
+
+            if (newPlayer->hasAudio())
+            {
+                {
+                    const juce::ScopedLock sl (stateLock);
+                    loadedFileName = newPlayer->getSourceFileName();
+                    reachedEnd.store (false, std::memory_order_relaxed);
+                }
+
+                newPlayer->setBpmScale (bpmDoubled.load (std::memory_order_relaxed) ? 2.0 : 1.0);
+                newPlayer->setMeterOverride (hostTimeSigNumerator.load (std::memory_order_relaxed));
+
+                std::atomic_store (&player, std::move (newPlayer));
+                ++fileGeneration;
+
+                // A impressao digital sai daqui, e nao do player: e trabalho de
+                // fundo e nao pode atrasar o carregamento. Um novo start cancela
+                // o anterior, entao trocar de arquivo rapidinho nao empilha.
+                fingerprintWorker.start (file);
+            }
+
+            loadStage.store (static_cast<int> (FilePlayer::LoadStage::publishing), std::memory_order_relaxed);
+            loadProgress.store (1.0f, std::memory_order_relaxed);
+            loadInProgress.store (false, std::memory_order_relaxed);
+        });
+    });
+}
+
+bool PlayScoreProcessor::isLoadingAudio() const noexcept
+{
+    return loadInProgress.load (std::memory_order_relaxed);
+}
+
+float PlayScoreProcessor::getLoadProgress() const noexcept
+{
+    return loadProgress.load (std::memory_order_relaxed);
+}
+
+int PlayScoreProcessor::getLoadStage() const noexcept
+{
+    return loadStage.load (std::memory_order_relaxed);
 }
 
 
@@ -334,6 +422,59 @@ int PlayScoreProcessor::getBeatsPerBar() const
 {
     const auto current = std::atomic_load (&player);
     return current != nullptr ? current->getBeatsPerBar() : 4;
+}
+
+double PlayScoreProcessor::getRawAudioBpm() const
+{
+    const auto current = std::atomic_load (&player);
+    return current != nullptr ? current->getRawBpm() : 0.0;
+}
+
+bool PlayScoreProcessor::isBpmDoubled() const noexcept
+{
+    return bpmDoubled.load (std::memory_order_relaxed);
+}
+
+void PlayScoreProcessor::setBpmDoubled (bool doubled)
+{
+    bpmDoubled.store (doubled, std::memory_order_relaxed);
+
+    // O player ja publicado troca de escala na hora: recalcula BARS e o loop sem
+    // recarregar o arquivo. Leitura/escrita por atomico, sem disputar com o audio.
+    if (const auto current = std::atomic_load (&player))
+        current->setBpmScale (doubled ? 2.0 : 1.0);
+}
+
+double PlayScoreProcessor::getLeadingSilenceSeconds() const
+{
+    const auto current = std::atomic_load (&player);
+    return current != nullptr ? current->getLeadingSilenceSeconds() : 0.0;
+}
+
+bool PlayScoreProcessor::wasAudioTrimmed() const
+{
+    const auto current = std::atomic_load (&player);
+    return current != nullptr && current->wasTrimmed();
+}
+
+double PlayScoreProcessor::getHostBpm() const noexcept
+{
+    return hostBpm.load (std::memory_order_relaxed);
+}
+
+int PlayScoreProcessor::getHostTimeSignatureNumerator() const noexcept
+{
+    return hostTimeSigNumerator.load (std::memory_order_relaxed);
+}
+
+int PlayScoreProcessor::getHostTimeSignatureDenominator() const noexcept
+{
+    return hostTimeSigDenominator.load (std::memory_order_relaxed);
+}
+
+double PlayScoreProcessor::getHostPpqPosition() const noexcept
+{
+    return hostPpqPosition.load (std::memory_order_relaxed);
 }
 
 double PlayScoreProcessor::getDetectedTuningHz() const

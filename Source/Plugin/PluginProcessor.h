@@ -39,8 +39,17 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
-    void loadAudioFile (const juce::File& file);
+    // Carrega o audio em segundo plano. O trabalho pesado (decode, forma de
+    // onda, andamento, afinacao) roda num job do loadPool, fora da message
+    // thread; a UI acompanha por isLoadingAudio()/getLoadProgress()/
+    // getLoadStage(). Substitui o antigo loadAudioFile sincrono, que travava a
+    // interface por todo o tempo da analise.
+    void beginLoadAudioFile (const juce::File& file);
     bool exportTempoMap (const juce::File& file);
+
+    bool isLoadingAudio() const noexcept;
+    float getLoadProgress() const noexcept;
+    int getLoadStage() const noexcept;
 
     // Estado para a interface. Tudo que toca o player passa por stateLock: a
     // interface lê da thread de mensagens enquanto o áudio pode estar em fillOutput.
@@ -74,8 +83,26 @@ public:
     juce::String getIdentificationMessage() const;
     int getIdentificationFingerprintLength() const;
 
+    // Andamento efetivo (detectado x escala, padrao x2) e cru (detectado), para o
+    // botao de fonte no painel 05: x2 corrige a leitura do SoundStretch para a
+    // metrica do editor; x1 mantem o valor real detectado.
     double getAudioBpm() const;
     int getBeatsPerBar() const;
+    double getRawAudioBpm() const;
+    bool isBpmDoubled() const noexcept;
+    void setBpmDoubled (bool doubled);
+
+    // Silencio inicial removido no carregamento (zeros digitais exatos), para o
+    // aviso de "audio adaptado". Zero = nada foi cortado.
+    double getLeadingSilenceSeconds() const;
+    bool wasAudioTrimmed() const;
+
+    // Transporte declarado pelo host. Zero significa "o host nao informou";
+    // nunca tratar o ausente como um valor real de BPM ou de formula de compasso.
+    double getHostBpm() const noexcept;
+    int getHostTimeSignatureNumerator() const noexcept;
+    int getHostTimeSignatureDenominator() const noexcept;
+    double getHostPpqPosition() const noexcept;
     double getDetectedTuningHz() const;
     double getDetectedTuningCents() const;
     double getDurationSeconds() const;
@@ -112,6 +139,18 @@ private:
     // cancelamento é lido a cada bloco.
     Fingerprint::Worker fingerprintWorker;
 
+    // Carga assincrona. Os jobs rodam fora da message thread e devolvem o player
+    // por callAsync; a UI so le os atomicos abaixo, a 20 Hz, sem lock.
+    juce::ThreadPool loadPool { 1 };
+    std::atomic<bool> loadInProgress { false };
+    std::atomic<float> loadProgress { 0.0f };
+    std::atomic<int> loadStage { static_cast<int> (FilePlayer::LoadStage::preparing) };
+    std::atomic<int> loadGeneration { 0 };
+
+    // Guarda de vida: jobs e callAsync capturam este flag e desistem se o
+    // processador ja foi destruido. Sem ele, um job em voo tocaria membros mortos.
+    std::shared_ptr<std::atomic<bool>> aliveFlag { std::make_shared<std::atomic<bool>> (true) };
+
     // stateLock ficou só para leituras O(1) da message thread (strings e números
     // da ficha). Nenhuma região crítica de áudio passa por aqui — ver processBlock.
     mutable juce::CriticalSection stateLock;
@@ -135,6 +174,15 @@ private:
     std::atomic<int64_t> transportSample { 0 };
     std::atomic<double> transportSampleRate { 0.0 };
     std::atomic<bool> reachedEnd { false };
+
+    std::atomic<double> hostBpm { 0.0 };
+    std::atomic<int> hostTimeSigNumerator { 0 };
+    std::atomic<int> hostTimeSigDenominator { 0 };
+    std::atomic<double> hostPpqPosition { 0.0 };
+
+    // Fonte do BPM escolhida no painel 05. Fora do APVTS de proposito: e estado
+    // de sessao da UI, nao automacao salva no projeto.
+    std::atomic<bool> bpmDoubled { true };
 
     juce::String loadedFileName;
 

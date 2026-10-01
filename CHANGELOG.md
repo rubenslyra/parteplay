@@ -34,6 +34,25 @@ entra, e 0.2.2 é o primeiro número que não colide com nada já publicado.
 - **Números formatados pela cultura** — o separador decimal passa a ser o do
   usuário: `128.5` em en-US/en-GB, `128,5` em pt-BR/es-ES. Vale para BPM, afinação
   detectada, referência A4 e megabytes exibidos.
+- **Botão de créditos e overlay de tecnologias** — um "i" ao lado do seletor de
+  idioma abre um cartão rolável com as bibliotecas de áudio (SoundTouch, FFmpeg,
+  Chromaprint), as interfaces (JUCE, VST3) e o ambiente de compilação, seguindo o
+  idioma ativo. Fecha no botão, no Esc ou ao clicar fora.
+- **Pipeline externa de andamento (ffmpeg + SoundStretch)** — quando os executáveis
+  existem, o BPM é medido por eles: o `ffmpeg` converte para WAV mono a 44,1 kHz e o
+  `soundstretch -bpm` reporta o valor. Os binários ficam em `resources/bin/` e são
+  localizados por `Source/Analysis/ExternalBpm.cpp` (`PARTEPLAY_TOOLS_DIR`, pasta ao
+  lado do executável, `%APPDATA%/PartePlay/bin` ou `PATH`). O analisador nativo
+  continua como reserva (issue #1).
+- **Corte do silêncio inicial do áudio de referência** — zeros digitais exatos
+  (sem limiar em dB) são removidos antes de qualquer medição, de modo que a
+  duração, a forma de onda, o BARS e o loop já nascem alinhados ao compasso 1 do
+  editor. O áudio entregue ao player é o áudio ajustado e a UI avisa quando houve
+  corte.
+- **Botão de fonte do BPM no painel 05** — alterna entre o padrão corrigido (×2) e
+  o valor real medido pelo SoundStretch. Não é automação salva no projeto: é
+  escolha de leitura, então fica fora do APVTS. O BARS e o loop acompanham a
+  escolha na hora, sem recarregar o arquivo.
 - **CI multiplataforma** — `.github/workflows/ci.yml` com jobs `metadata`,
   `version-single-source`, build+test+artefato em Windows/Ubuntu/macOS e um
   build universal do macOS. Presets de CMake para `msvc`, `ninja`, `linux`,
@@ -42,7 +61,7 @@ entra, e 0.2.2 é o primeiro número que não colide com nada já publicado.
   declarada como fato único; a CI clona a tag exata em vez de derivá-la do
   número do projeto (a derivação original produzia a tag inexistente `0.1.0`).
 - **README em inglês** — reescrito para o público: transporte escravo, i18n e
-  fingerprint offline descritos com precisão; badges de testes (325) e CI.
+  fingerprint offline descritos com precisão; badges de testes (461) e CI.
 - **Página do produto em GitHub Pages** — `docs/index.html` autossuficiente
   (sem JS, sem builds) com `.github/workflows/pages.yml` para publicar via
   GitHub Actions.
@@ -79,10 +98,24 @@ entra, e 0.2.2 é o primeiro número que não colide com nada já publicado.
 
 ### Alterado
 
-- **A suíte de domínio passou a 325 verificações**, incluindo: códigos BCP 47,
+- **A suíte de domínio passou a 461 verificações**, incluindo: códigos BCP 47,
   separador decimal por cultura, grafia das variantes do inglês, acentuação do
-  es-ES, cálculo/cancelamento/rejeições do fingerprint e publicação do player sem
-  lock.
+  es-ES, cálculo/cancelamento/rejeições do fingerprint, publicação do player sem
+  lock, estimativa de andamento (valsa a 103 BPM em 3/4, marcha a 120, lento a 90
+  e a assinatura 3/4 vs 4/4), o progresso monotônico dessa estimativa, o round-trip
+  do mapa de tempo MIDI, os conjuntos puros da pipeline externa (parser da saída
+  do SoundStretch, linha de comando do ffmpeg e caminho do WAV temporário), a
+  contagem de silêncio inicial (zeros digitais exatos) e o BARS a partir da duração
+  útil, do BPM efetivo e do numerador do compasso.
+- **Andamento: pipeline externa primeiro, analisador nativo como reserva** — quando
+  `ffmpeg` e `soundstretch` existem, o BPM vem deles; o `TempoAnalyser` continua no
+  fluxo só como fallback. É a decisão da issue #1: as ferramentas são processos
+  separados (não linkados), com licenças e proveniência em `THIRD_PARTY_NOTICES.md`
+  e `resources/bin/README.md`.
+- **BARS usa a fórmula de compasso do hospedeiro** — quando o host declara o
+  compasso (numerador > 0), é ele que divide a contagem; sem declaração, vale o
+  compasso estimado do áudio. E a contagem passou a ser derivada da duração útil e
+  do BPM efetivo, então acompanha a troca de fonte do BPM e o corte de silêncio.
 - **`Format` do destino do template de PR** — `ctest --preset msvc` substitui o
   caminho direto para o binário, e o checklist exige DCO e a reconcilição da versão.
 - **CI verde nas três plataformas** — depois de cinco rodadas de correção, o

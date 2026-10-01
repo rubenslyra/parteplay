@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 
 #include <atomic>
+#include <functional>
 #include <memory>
 
 #include "Tuning.h"
@@ -17,7 +18,13 @@ public:
     FilePlayer() = default;
     ~FilePlayer() = default;
 
-    void loadFromFile (const juce::File& file);
+    // Progresso da carga para a interface. O estagio e um identificador, nao
+    // texto: quem traduz e a UI, dona da tabela de strings. O callback roda na
+    // thread de fundo, entao nao pode tocar em nada da interface.
+    enum class LoadStage { preparing, decoding, waveform, tempo, tuning, publishing };
+    using LoadProgressFn = std::function<void (float fraction, LoadStage stage)>;
+
+    void loadFromFile (const juce::File& file, const LoadProgressFn& onProgress = {});
 
     bool hasAudio() const noexcept                         { return audioBuffer != nullptr; }
     double getSampleRate() const noexcept                  { return fileSampleRate; }
@@ -25,11 +32,36 @@ public:
     const juce::String& getSourceFileName() const noexcept { return sourceFileName; }
     juce::int64 getSourceFileSize() const noexcept         { return fileSizeBytes; }
 
-    double getBpm() const noexcept                         { return estimatedBpm; }
-    int getBeatsPerBar() const noexcept                    { return beatsPerBar; }
+    // Andamento: `getRawBpm` e o detectado (SoundStretch/analise nativa) e
+    // `getBpm` aplica a escala escolhida pelo usuario (padrao x2). BARS e o loop
+    // de treino consomem os dois, entao a escala entra numa unica fonte.
+    double getRawBpm() const noexcept                      { return estimatedBpm; }
+    double getBpm() const noexcept                         { return estimatedBpm * bpmScale.load (std::memory_order_relaxed); }
+    int getBeatsPerBar() const noexcept                    { return effectiveBeatsPerBar(); }
     double getDetectedTuningHz() const noexcept            { return detectedTuningHz; }
     double getDurationSeconds() const noexcept             { return durationSeconds; }
-    int getMeasureCount() const noexcept                   { return measures; }
+    int getMeasureCount() const noexcept;
+
+    // Ajuste de andamento: x2 (padrao) corrige a leitura crua do SoundStretch
+    // para a metrica do editor; x1 mantem o valor real detectado. Alterar apos a
+    // carga recalcula BARS e o mapeamento do loop sem recarregar o arquivo.
+    void setBpmScale (double scale) noexcept               { bpmScale.store (scale > 0.0 ? scale : 1.0, std::memory_order_relaxed); }
+    double getBpmScale() const noexcept                    { return bpmScale.load (std::memory_order_relaxed); }
+
+    // Metrica efetiva: o numerador declarado pelo host quando existe (>0); senao
+    // o compasso estimado do audio. Mantem BARS e loop alinhados ao editor.
+    void setMeterOverride (int numerator) noexcept         { meterOverride.store (numerator > 0 ? numerator : 0, std::memory_order_relaxed); }
+    int getMeterOverride() const noexcept                  { return meterOverride.load (std::memory_order_relaxed); }
+
+    // Silencio inicial removido (zeros digitais exatos). Zero = o audio comeca no
+    // primeiro sample nao nulo; a UI avisa quando o audio foi adaptado.
+    double getLeadingSilenceSeconds() const noexcept       { return fileSampleRate > 0.0 ? (double) leadingSilenceSamples / fileSampleRate : 0.0; }
+    bool wasTrimmed() const noexcept                       { return leadingSilenceSamples > 0; }
+
+    // Puros, para teste: contagem de silencio inicial (sem limiar inventado) e
+    // BARS a partir da duracao util, do BPM efetivo e do numerador do compasso.
+    static juce::int64 countLeadingSilence (const juce::AudioBuffer<float>& buffer);
+    static int measureCountFor (double durationSeconds, double bpm, int beatsPerBar);
 
     // Ficha da canção lida das tags embutidas no arquivo. É o primeiro elo da
     // cadeia "tags -> consulta online -> manual": o que não estiver na tag
@@ -82,12 +114,17 @@ public:
     bool getLoopFractions (double& startFraction, double& endFraction) const noexcept;
 
 private:
-    void runTempoAnalysis();
+    int effectiveBeatsPerBar() const noexcept
+    {
+        const auto override = meterOverride.load (std::memory_order_relaxed);
+        return override > 0 ? override : beatsPerBar;
+    }
+
     void readTags (const juce::AudioFormatReader& reader);
 
     // audioBuffer e peaks sao escrita-uma-vez em loadFromFile, antes de o objeto
     // ser publicado ao processador. Por isso nao sao atomicos: o publicador
-    // (std::atomic_store em loadAudioFile) cria a barreira de memoria.
+    // (std::atomic_store em beginLoadAudioFile) cria a barreira de memoria.
     std::shared_ptr<const juce::AudioBuffer<float>> audioBuffer;
     WaveformPtr peaks;
 
@@ -111,7 +148,12 @@ private:
     int beatsPerBar = 4;
     double detectedTuningHz = 440.0;
     double durationSeconds = 0.0;
-    int measures = 0;
+    juce::int64 leadingSilenceSamples = 0;
+
+    // Escritos pela message thread apos a publicacao, lidos pela thread de audio
+    // no laco do treino: por isso sao atomicos, e nao membros simples.
+    std::atomic<double> bpmScale { 2.0 };
+    std::atomic<int> meterOverride { 0 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FilePlayer)
 };

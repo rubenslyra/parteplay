@@ -174,6 +174,24 @@ if ($residuo)
     throw "Lixeira chegou ao host e a instalacao foi revertida: $($residuo.Name -join ', ')"
 }
 
+# --- Ferramentas da pipeline de BPM (resources\bin) ----------------------------
+# O localizador (Source\Analysis\ExternalBpm.cpp) procura em %APPDATA%\PartePlay\bin.
+# Copiar para la faz a pipeline valer no VST3 e no Standalone ao mesmo tempo, sem
+# depender do diretorio do host - que, no VST3, nao e o dono do plugin.
+$toolsSrc = Join-Path $root "resources\bin"
+$toolsDst = Join-Path ([Environment]::GetFolderPath('ApplicationData')) "PartePlay\bin"
+
+if (Test-Path -LiteralPath $toolsSrc)
+{
+    Write-Host "> Instalando ferramentas de BPM em $toolsDst"
+    New-Item -ItemType Directory -Path $toolsDst -Force | Out-Null
+    Copy-Item -Path (Join-Path $toolsSrc '*') -Destination $toolsDst -Recurse -Force
+}
+else
+{
+    Write-Warning "resources\bin ausente; o plugin usara o analisador nativo de BPM."
+}
+
 Write-Host ""
 Write-Host "> Instalado em $dest"
 Write-Host "> SHA-256 $hashSrc"

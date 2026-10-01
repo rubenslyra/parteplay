@@ -9,7 +9,7 @@
 [![JUCE](https://img.shields.io/badge/JUCE-9.0.2-3d2b8a?logo=juce)](CMakeLists.txt)
 [![Language](https://img.shields.io/badge/C%2B%2B-C%2B%2B17-00599c?logo=c%2B%2B&logoColor=white)](CMakeLists.txt)
 [![CMake](https://img.shields.io/badge/CMake-3.22%2B-064f8c?logo=cmake&logoColor=white)](CMakePresets.json)
-[![Tests](https://img.shields.io/badge/tests-325%20checks%20%E2%9C%85-4c9a2c)](Tests/DomainTests.cpp)
+[![Tests](https://img.shields.io/badge/tests-461%20checks%20%E2%9C%85-4c9a2c)](Tests/DomainTests.cpp)
 [![i18n](https://img.shields.io/badge/i18n-pt--BR%20%7C%20en--GB%20%7C%20en--US%20%7C%20es--ES-0f7cbf)](Source/Ui/Text.cpp)
 [![CI](https://github.com/rubenslyra/parteplay/actions/workflows/ci.yml/badge.svg)](https://github.com/rubenslyra/parteplay/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-lightgrey)](LICENSE)
@@ -120,7 +120,7 @@ cmake --build --preset msvc --config Release --target PartePlayTests
 ctest --preset msvc
 ```
 
-**325 checks, 0 failures.** The suite is organized so that musical correctness is enforced by code,
+**461 checks, 0 failures.** The suite is organized so that musical correctness is enforced by code,
 not by ear:
 
 | Group                | What it locks                                                                                                                                              |
@@ -204,7 +204,7 @@ Source/
   Export/
     MidiMapExporter.* — MIDI 1.0 time-map export
 Tests/
-  DomainTests.cpp   — 325 checks: tuning, encoding, i18n, fingerprint, player publication
+  DomainTests.cpp   — 461 checks: tuning, encoding, i18n, fingerprint, tempo, player publication
 ```
 
 `Waveform.h` sits in `Audio/` and not in `Ui/`, because it is derived data — min/max pairs
@@ -283,6 +283,37 @@ licence; whether PartePlay ships a commercial edition is an open product decisio
 
 ---
 
+## Credits and technologies
+
+The same list is shown inside the plugin, behind the **i** button next to the language
+selector, and it follows the active UI language.
+
+**Audio libraries**
+
+- **SoundTouch / SoundStretch** — open-source audio processing by Olli Parviainen
+  (Finland); tempo and beat analysis. <https://www.surina.net/soundtouch/>
+- **FFmpeg / FFprobe / libavcodec** — cross-platform multimedia system started by
+  Fabrice Bellard in 2000; container and codec conversion. <https://ffmpeg.org/>
+- **Chromaprint** — local acoustic fingerprinting. <https://acoustid.org/chromaprint>
+
+**Interface and standards**
+
+- **JUCE** — cross-platform C++ framework for audio plugins; architecture conceived by
+  Julian "Jules" Storer. <https://juce.com/>
+- **Steinberg VST3** (`IComponent` / `IEditController`) — plugin specification for
+  real-time compatibility with audio hosts. <https://steinbergmedia.github.io/vst3_doc/>
+
+**Build environment**
+
+- Microsoft Visual Studio 2026 and Visual Studio Code, **C++17**.
+  <https://visualstudio.microsoft.com/>
+
+Every third-party component is listed, with its licence, in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). PartePlay itself is distributed
+under the GNU AGPL-3.0.
+
+---
+
 ## References
 
 ### Standards in scope
@@ -291,11 +322,16 @@ licence; whether PartePlay ships a commercial edition is an open product decisio
 | ------------------------------------------------------------------ | ------------------------------------------------------------ |
 | **ISO 16:1975** — _Acoustics — Standard tuning frequency (440 Hz)_ | `Tuning::defaultReferenceHz = 440.0`, `Tuning::centsBetween` |
 | **MIDI 1.0 — RP-001** (MMA / AMEI)                                 | The exported time-map file format in `MidiMapExporter`       |
+| **IEEE 754-2019** (ISO/IEC/IEEE 60559)                             | Double-precision BPM/cents (`TempoAnalyser`, `Tuning`); decimals in `Text::number` |
 | **VST3 SDK** (Steinberg)                                           | Plugin interface, transport contract, Slave/Master role      |
 | **C++17** (ISO/IEC 14882:2017)                                     | `cxx_std_17`, no extensions                                  |
 
 ### Technical bibliography
 
+- **BPM and timing references** — consolidated in
+  [`referencias_bibliograficas_bpm.md`](referencias_bibliograficas_bpm.md):
+  MIDI 1.0/2.0, Roads (_The Computer Music Tutorial_), Huber/Runstein, IEEE 754,
+  Boulanger/Lazzarini, the VST3 API and Campbell/Greated (cents vs. BPM).
 - **JUCE 9.0.2** — _The JUCE Framework_. [Docs](https://docs.juce.com/master/) and
   [licensing](https://juce.com/legal/juce-9-licence/).
 - **Laroche, J.; Dolson, M.** — "Improved phase vocoder time-scale modification of audio".

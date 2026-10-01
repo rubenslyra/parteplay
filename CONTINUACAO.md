@@ -102,8 +102,8 @@ registrada (aba *Signing keys*, título `parteplay-signing`).
 
 | # | Assunto | Entregue | Falta |
 |---|---|---|---|
-| 1 | Pipeline ffmpeg/ffprobe + remoção de silêncio inicial + UI de progresso | — | tudo. Issue existe, nenhum código. Decidir **licença e empacotamento antes da pipeline** — é o que determina a interface. Considerar detector nativo antes de adotar ffmpeg. |
-| 2 | `C4244` em `TempoAnalyser.cpp:248` e `FingerprintWorker.cpp:157` | **Os dois pontos corrigidos** em `0c05f85` (`develop`), agora em `Source/Analysis/`. O do fingerprint corrigiu um bug real de escala do PCM, não só o warning. **Suíte rodada: 325 verificações, 0 falhas** (30/09, preset `msvc-2026`) — a pendência de rodar a suíte está resolvida. | **Promover `/WX` a erro nos fontes próprios** — sem isso a issue volta. |
+| 1 | Pipeline ffmpeg/ffprobe + remoção de silêncio inicial + UI de progresso | **UI de progresso e carga assíncrona** (`LoadingOverlay`, `FilePlayer::LoadStage`, `beginLoadAudioFile`); em **01/10/2026**, a **pipeline externa de andamento** (`Source/Analysis/ExternalBpm.cpp`: `ffmpeg` → WAV mono 44,1 kHz → `soundstretch -bpm`), com binários LGPL em `resources/bin/`; e a **remoção do silêncio inicial** (zeros digitais exatos, `FilePlayer::countLeadingSilence`, com aviso na UI e áudio entregue já ajustado). | Nada pendente do escopo. A decisão de 30/09/2026 de "não embarcar" foi **revertida** (licença resolvida; `THIRD_PARTY_NOTICES.md`, `resources/bin/`, `%APPDATA%/PartePlay/bin`). O fator `×2` também foi **revertido** em 01/10/2026: virou padrão do BPM, com botão no painel 05 para escolher o valor real do SoundStretch. |
+| 2 | `C4244` em `TempoAnalyser.cpp:248` e `FingerprintWorker.cpp:157` | **Os dois pontos corrigidos** em `0c05f85` (`develop`), agora em `Source/Analysis/`. O do fingerprint corrigiu um bug real de escala do PCM, não só o warning. **Suíte rodada: 401 verificações, 0 falhas** (30/09, preset `msvc-2026`) — a pendência de rodar a suíte está resolvida. | **Promover `/WX` a erro nos fontes próprios** — sem isso a issue volta. |
 | 3 | Cobertura automatizada: sync sob time-stretch e vocoder | — | tudo. Mas `testFingerprintPcmConversion` já serve de **precedente**: invariante quantitativa, não golden file, exatamente o que a issue pede. |
 | 4 | Licenças de terceiros no binário distribuído (Chromaprint LGPL) | Issue escrita com a análise da LGPL-2.1; tarball 1.6.1 confirmado em `Chromaprint-Dependences/`. **`THIRD_PARTY_NOTICES.md` criado em 30/09/2026** e lincado no README, com cada string de licença lida do arquivo real da árvore. | Enumerar a lista de libs vendorizadas dentro da JUCE (hoje o arquivo aponta para o `LICENSE.md` da JUCE em vez de listar). |
 | 5 | Credenciais plaintext + secret scanning | Análise registrada na própria issue: `secrets` está no `.gitignore`, `git log --all -- secrets` vazio, **não vazou**. | Mover para variável de ambiente, documentar em `CONTRIBUTING.md`, `gitleaks`/`detect-secrets` no CI, **rotacionar** OAuth do GitHub e chave AcoustID. |
@@ -113,6 +113,30 @@ O número de verificações foi de 313 para **325** — confirmado por observaç
 `325 verificacoes, 0 falha(s)`. As 12 novas são as do teste de regressão do PCM
 descrito em "Corrigido". O número já foi reconciliado no README, no
 `docs/index.html` e no CHANGELOG.
+
+Depois disso, em 30/09/2026, a reescrita do `TempoAnalyser` (testes sintéticos de
+click track) e o teste de round-trip do mapa de tempo MIDI levaram a suíte a
+**342** — confirmado por execução (`342 verificacoes, 0 falha(s)`) e
+reconciliado no README, no `docs/index.html` e aqui.
+
+Em seguida, ainda em 30/09/2026, a carga assíncrona (progresso do `estimateBpm`
+e as 7 strings de carregamento, cada uma checada nas 4 culturas) levou a suíte de
+**342** para **401** — confirmado por execução (`401 verificacoes, 0 falha(s)`) e
+reconciliado no README, no `docs/index.html`, no CHANGELOG e aqui.
+
+Em 01/10/2026, a pipeline externa de andamento (`ExternalBpm`, com os binários em
+`resources/bin/`) acrescentou 14 verificações, de **401** para **415** — confirmado
+por execução (`415 verificacoes, 0 falha(s)`) e reconciliado no README, no
+`docs/index.html` e no CHANGELOG. As novas cobrem os conjuntos puros: parser da saída
+do SoundStretch, linha de comando do `ffmpeg`, nome do WAV temporário e o interruptor
+`setEnabled` (desligado no `main` do teste para o CI não depender de `ffmpeg` no PATH).
+
+Ainda em 01/10/2026, a sincronia de compassos (corte de silêncio inicial, BARS pela
+fórmula do host e escala de BPM ×2) acrescentou 46 verificações, de **415** para
+**461** — confirmado por execução (`461 verificacoes, 0 falha(s)`) e reconciliado no
+README, no `docs/index.html` e no CHANGELOG. Cobrem `FilePlayer::countLeadingSilence`
+(zeros digitais em qualquer canal), `FilePlayer::measureCountFor` (guarda de duração,
+BPM e compasso nulos) e a métrica efetiva (`setMeterOverride`/`setBpmScale`).
 
 ## Estado do disco (30/09/2026) — não resolvido
 
@@ -148,6 +172,57 @@ backup. `chkdsk /scan` (read-only) exige shell elevado e ainda não foi executad
 `Defs.txt`; sem ele o `juceaide` quebra com `Unhandled exception` / `MSB8066`.
 Vale para qualquer árvore de build — `build\msvc` foi removida em 30/09 e
 recriar o preset `msvc` gera os `Defs.txt` de novo, sem problema.
+
+## Removidos por completo nesta rodada (BPM automático + seletor de idioma)
+
+Registro de antecessores removidos (agent.md, Bloco 3, Anexo): nada foi publicado
+com a herança ainda presente.
+
+- **`TempoAnalyser` — estimador por pente puro (`combScore`) e desempate ×2/÷2.**
+  Removido. Motivo: o pente puro premiava tempos rápidos por densidade (mais
+  dentes dentro do envelope) e só testava ambiguidade de oitava; deixava passar
+  o caso 103→69 (razão 3:2). Substituto: `combExcess` (pente normalizado pela
+  média do envelope) + `tactusPrior` (log-gaussiana em 120 BPM) + uma única
+  varredura 40–240 BPM. Coberto por testes sintéticos novos (click track 103 em
+  3/4, 120 em 4/4, 90 em 4/4) em `Tests/DomainTests.cpp`.
+- **`estimateBeatsPerBar` — busca de fase por salto `ceil(barFrames/4)`.**
+  Removida em favor da busca por frame. A busca antiga testava no máximo ~4
+  alinhamentos, errava o downbeat e classificava um 3/4 nítido como 4/4.
+- **Seletor de idioma — seta de dropdown (`drawComboBox`).** Removida.
+  Substituída por `drawLanguageFlag`: bandeira vetorial do idioma ativo,
+  desenhada no código, sem asset e sem licença de terceiro.
+- **Seletor de idioma — desenho manual do texto do item selecionado.**
+  Removido. Motivo: duplicava o label interno do `ComboBox` e o texto aparecia
+  um sobre o outro. Agora o texto é desenhado só pelo label, posicionado por
+  `StudioLookAndFeel::positionComboBoxText` (zona do label reservada).
+
+## Removidos por completo nesta rodada (carga assíncrona)
+
+Registro de antecessores removidos (agent.md, Bloco 3, Anexo): a carga passou a
+ser assíncrona e com feedback; nada dos caminhos síncronos ficou para trás.
+
+- **`PlayScoreProcessor::loadAudioFile` (síncrono).** Removido. Lia o arquivo,
+  rodava a análise e publicava o player na thread de mensagem, travando a UI (e
+  sem nenhum sinal de progresso). Substituto: `beginLoadAudioFile`, que agenda um
+  job em `juce::ThreadPool loadPool { 1 }`, controla estado por
+  `std::atomic<bool> loadInProgress`, `std::atomic<float> loadProgress`,
+  `std::atomic<int> loadStage` e um `loadGeneration` que descarta cargas
+  superadas, publica o `FilePlayer` na message thread por
+  `MessageManager::callAsync` e guarda um
+  `std::shared_ptr<std::atomic<bool>> aliveFlag` que o destrutor desliga antes de
+  `loadPool.removeAllJobs (true, 4000)`.
+- **`FilePlayer::runTempoAnalysis()` (e a declaração no cabeçalho).** Removida.
+  Rodava a análise de uma vez, sem reportar progresso. Agora
+  `FilePlayer::loadFromFile (file, onProgress)` lê o arquivo em blocos
+  (262144 amostras) e chama `estimateBpm`/`estimateBeatsPerBar`/
+  `estimateTuningCents` inline, remapeando o progresso por estágio
+  (`FilePlayer::LoadStage`: `preparing`/`decoding`/`waveform`/`tempo`/`tuning`/
+  `publishing`).
+- **UI — disparo de carga sem feedback.** Removido. Antes o seletor de arquivo
+  chamava `loadAudioFile` direto e não havia indicação visual. Agora o editor
+  exibe o `LoadingOverlay` (topo, cobre 100% da janela, com
+  `setInterceptsMouseClicks (true, true)` para bloquear o que está atrás), com
+  estágio e barra, e o esconde quando `isLoadingAudio()` volta a falso.
 
 ## Branches e governança (30/09/2026)
 
@@ -245,8 +320,8 @@ Ambos gitignored. **Não commitar.** O post do LinkedIn **não** foi publicado.
 - `FingerprintWorker.*` calcula Chromaprint fora da thread de áudio.
 - `FilePlayer.*` publica buffers por `shared_ptr<const>` atômico, sem lock no áudio.
 - `Text.*` i18n pt-BR / en-GB / en-US / es-ES.
-- `Tests/DomainTests.cpp`: **325 verificações, 0 falhas** (confirmado rodando em
-  30/09/2026 no preset `msvc-2026`).
+- `Tests/DomainTests.cpp`: **461 verificações, 0 falhas** (confirmado rodando em
+  01/10/2026 no preset `msvc-2026`; 415 antes do corte de silêncio/BARS, 401 em 30/09/2026).
 - `secrets` é um **arquivo** de 311 bytes na raiz do repo (OAuth do GitHub + chave
   AcoustID), não uma pasta. O `.gitignore` cobre os dois casos.
 - `develop` **está no GitHub** e ficou 7 commits à frente de `origin/develop` até

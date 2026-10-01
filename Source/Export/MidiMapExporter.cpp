@@ -36,7 +36,7 @@ namespace
         const juce::String name = Text::t ("PartePlay - Mapa de Tempo");
 
         writeDelta (out);
-        out.writeByte (0xFF);
+        out.writeByte (static_cast<unsigned char> (0xFF));
         out.writeByte (0x03);
         out.writeByte (static_cast<unsigned char> (name.getNumBytesAsUTF8()));
         out.write (name.toRawUTF8(), name.getNumBytesAsUTF8());
@@ -47,7 +47,7 @@ namespace
         const auto microsecondsPerQuarter = static_cast<int> (std::lround (60000000.0 / bpm));
 
         writeDelta (out);
-        out.writeByte (0xFF);
+        out.writeByte (static_cast<unsigned char> (0xFF));
         out.writeByte (0x51);
         out.writeByte (0x03);
         out.writeByte (static_cast<unsigned char> ((microsecondsPerQuarter >> 16) & 0xFF));
@@ -58,7 +58,7 @@ namespace
     void writeMetaTimeSignature (juce::MemoryOutputStream& out, int beatsPerBar)
     {
         writeDelta (out);
-        out.writeByte (0xFF);
+        out.writeByte (static_cast<unsigned char> (0xFF));
         out.writeByte (0x58);
         out.writeByte (0x04);
         out.writeByte (static_cast<unsigned char> (beatsPerBar)); // nn
@@ -70,7 +70,7 @@ namespace
     void writeMetaEndOfTrack (juce::MemoryOutputStream& out)
     {
         writeDelta (out);
-        out.writeByte (0xFF);
+        out.writeByte (static_cast<unsigned char> (0xFF));
         out.writeByte (0x2F);
         out.writeByte (0x00);
     }

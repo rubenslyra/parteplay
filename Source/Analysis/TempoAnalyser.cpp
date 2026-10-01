@@ -46,29 +46,61 @@ namespace
         return onset;
     }
 
-    double combScore (const juce::Array<float>& onset, const double framesPerBeat)
+    // Saliencia do pente normalizada pelo nivel medio do envelope.
+    //
+    // O pente puro premiava tempos rapidos: quanto mais curto o periodo, mais
+    // dentes caiam dentro do envelope e a media subia por densidade, nao por
+    // periodicidade. Dividir pela media do envelope transforma o numero em
+    // "quanto este tempo se destaca do fundo", que e a grandeza comparavel
+    // entre tempos diferentes - e e isso que desfaz a confusao 3:2 relatada
+    // (69,0 x 103,5): os dois sao candidatos na mesma busca, nao um corrigido
+    // por um fator testado a parte.
+    double combExcess (const juce::Array<float>& onset, double envelopeMean, double framesPerBeat)
     {
-        if (framesPerBeat < 1.5)
+        if (framesPerBeat < 1.5 || envelopeMean <= 1e-9)
             return -1.0;
 
         double total = 0.0;
         int count = 0;
 
-        for (int k = 0; k < 200; ++k)
+        for (int k = 0; k < 300; ++k)
         {
             const int idx = (int) std::lround (k * framesPerBeat);
             if (idx >= onset.size())
                 break;
 
-            total += onset.getReference (idx);
+            // Janela de +-1 frame. Sem ela o pente perde batidas por drift: o
+            // indice ideal k*framesPerBeat e arredondado a cada dente, e o onset
+            // cai no frame vizinho quando os dois arredondam em sentidos opostos.
+            // A perda e sistematica (cresce com k) e derruba justamente o tempo
+            // certo, que tem mais dentes do que o candidato errado.
+            float best = onset.getReference (juce::jlimit (0, onset.size() - 1, idx - 1));
+            best = juce::jmax (best, onset.getReference (idx));
+            best = juce::jmax (best, onset.getReference (juce::jlimit (0, onset.size() - 1, idx + 1)));
+
+            total += best;
             ++count;
         }
 
-        return count > 0 ? (total / (double) count) : -1.0;
+        if (count < 4)
+            return -1.0;
+
+        return (total / (double) count) / envelopeMean - 1.0;
+    }
+
+    // Prior de tactus: a percepcao ancora o pulso perto de 120 BPM, com
+    // tolerancia larga em escala logaritmica (Moelants; Parncutt). E o desempate
+    // de referencia da literatura para a ambiguidade de oitava e de metrica -
+    // sem ele, 69,0 e 103,5 pontuam quase igual e o maximo bruto escolhe errado.
+    double tactusPrior (double bpm)
+    {
+        const double x = std::log2 (bpm / 120.0) / 0.9;
+        return std::exp (-0.5 * x * x);
     }
 }
 
-double TempoAnalyser::estimateBpm (double sampleRate, const juce::AudioBuffer<float>& buffer)
+double TempoAnalyser::estimateBpm (double sampleRate, const juce::AudioBuffer<float>& buffer,
+                                   const ProgressFn& onProgress)
 {
     if (sampleRate <= 0.0)
         return 0.0;
@@ -79,57 +111,77 @@ double TempoAnalyser::estimateBpm (double sampleRate, const juce::AudioBuffer<fl
     if (onset.size() < 16)
         return 0.0;
 
+    double sum = 0.0;
+    for (int i = 0; i < onset.size(); ++i)
+        sum += (double) onset.getReference (i);
+
+    const double envelopeMean = sum / (double) onset.size();
     const double framesPerSecond = sampleRate / (double) hop;
 
-    double bestBpm = 0.0;
-    double bestScore = -1.0;
-
-    for (double bpm = 60.0; bpm <= 180.0; bpm += 0.25)
+    auto excessAt = [&] (double bpm)
     {
-        const double framesPerBeat = framesPerSecond * 60.0 / bpm;
-        const double score = combScore (onset, framesPerBeat);
-
-        if (score > bestScore)
-        {
-            bestScore = score;
-            bestBpm = bpm;
-        }
-    }
-
-    if (bestBpm <= 0.0)
-        return 0.0;
-
-    const double baseBpm = bestBpm;
-    const double baseScore = bestScore;
-
-    auto scoreFor = [&] (double bpm)
-    {
-        if (bpm < 60.0 || bpm > 180.0)
+        if (bpm < 40.0 || bpm > 240.0)
             return -1.0;
-        return combScore (onset, framesPerSecond * 60.0 / bpm);
+
+        return combExcess (onset, envelopeMean, framesPerSecond * 60.0 / bpm);
     };
 
-    const double doubleScore = scoreFor (baseBpm * 2.0);
-    if (doubleScore > 0.0 && doubleScore * 0.97 >= baseScore)
+    // A varredura cobre a ambiguidade metrica INTEIRA - nao so x2 e /2 como
+    // antes. 51,8, 69,0, 103,5, 138,0 e 207,0 sao todos candidatos na mesma
+    // busca, e o prior de tactus decide entre eles. Passo de 0,5 BPM no bruto,
+    // refinado a 0,05 em volta do pico vencedor.
+    double coarseBpm = 0.0;
+    double coarseWeight = -1.0;
+
+    const int coarseSteps = (int) std::lround ((240.0 - 40.0) / 0.5);
+
+    for (double bpm = 40.0; bpm <= 240.0; bpm += 0.5)
     {
-        bestBpm = baseBpm * 2.0;
-        bestScore = doubleScore;
-    }
-    else
-    {
-        const double halfScore = scoreFor (baseBpm / 2.0);
-        if (halfScore > 0.0 && halfScore > baseScore * 1.4)
+        const double excess = excessAt (bpm);
+        if (excess <= 0.0)
+            continue;
+
+        const double weight = excess * tactusPrior (bpm);
+        if (weight > coarseWeight)
         {
-            bestBpm = baseBpm / 2.0;
-            bestScore = halfScore;
+            coarseWeight = weight;
+            coarseBpm = bpm;
+        }
+
+        if (onProgress)
+        {
+            const int step = (int) std::lround ((bpm - 40.0) / 0.5);
+            onProgress (0.05f + 0.65f * (float) step / (float) coarseSteps);
         }
     }
 
-    const double finalScore = combScore (onset, framesPerSecond * 60.0 / bestBpm);
-    if (finalScore > bestScore)
-        bestScore = finalScore;
+    if (coarseBpm <= 0.0)
+        return 0.0;
 
-    jassert (bestBpm >= 60.0 && bestBpm <= 180.0);
+    double bestBpm = coarseBpm;
+    double bestWeight = coarseWeight;
+
+    for (double bpm = coarseBpm - 1.0; bpm <= coarseBpm + 1.0; bpm += 0.05)
+    {
+        const double excess = excessAt (bpm);
+        if (excess <= 0.0)
+            continue;
+
+        const double weight = excess * tactusPrior (bpm);
+        if (weight > bestWeight)
+        {
+            bestWeight = weight;
+            bestBpm = bpm;
+        }
+
+        if (onProgress)
+            onProgress (0.70f + 0.28f * (float) ((bpm - (coarseBpm - 1.0)) / 2.0));
+    }
+
+    jassert (bestBpm >= 40.0 && bestBpm <= 240.0);
+
+    if (onProgress)
+        onProgress (1.0f);
 
     return std::round (bestBpm * 2.0) * 0.5;
 }
@@ -162,11 +214,12 @@ int TempoAnalyser::estimateBeatsPerBar (double sampleRate, const juce::AudioBuff
         if (numBars < 4)
             return -1.0;
 
-        const int phaseSteps = juce::jlimit (1, 64, (int) std::ceil (barFrames / 4.0));
-
         double bestClarity = -1.0;
 
-        for (double phase = 0.0; phase < barFrames; phase += phaseSteps)
+        // Fase a cada frame. A busca antiga saltava ceil(barFrames/4) - ate ~19
+        // frames -, testava so 4 alinhamentos e errava o downbeat verdadeiro, o
+        // que fazia um 3/4 nitido cair para 4/4.
+        for (double phase = 0.0; phase < barFrames; phase += 1.0)
         {
             std::vector<double> strengths (static_cast<size_t> (beatsPerBar), 0.0);
 
@@ -222,7 +275,8 @@ int TempoAnalyser::estimateBeatsPerBar (double sampleRate, const juce::AudioBuff
     return 4;
 }
 
-double TempoAnalyser::estimateTuningCents (double sampleRate, const juce::AudioBuffer<float>& buffer)
+double TempoAnalyser::estimateTuningCents (double sampleRate, const juce::AudioBuffer<float>& buffer,
+                                           const ProgressFn& onProgress)
 {
     constexpr int fftOrder  = 12;
     constexpr int fftSize   = 1 << fftOrder;   // 4096
@@ -267,6 +321,10 @@ double TempoAnalyser::estimateTuningCents (double sampleRate, const juce::AudioB
                            spectrum[static_cast<size_t> (bin * 2 + 1)]);
     };
 
+    const int framesPerChannel = (buffer.getNumSamples() - fftSize) / hopSize + 1;
+    const double totalFrames = (double) framesPerChannel * (double) buffer.getNumChannels();
+    double doneFrames = 0.0;
+
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
     {
         const float* data = buffer.getReadPointer (ch);
@@ -274,6 +332,9 @@ double TempoAnalyser::estimateTuningCents (double sampleRate, const juce::AudioB
 
         for (int offset = 0; offset <= numSamples - fftSize; offset += hopSize)
         {
+            if (onProgress && totalFrames > 0.0)
+                onProgress ((float) (doneFrames / totalFrames));
+            ++doneFrames;
             std::fill (spectrum.begin(), spectrum.end(), 0.0f);
 
             double energy = 0.0;
@@ -347,6 +408,9 @@ double TempoAnalyser::estimateTuningCents (double sampleRate, const juce::AudioB
 
     if (bestCount < total / 8)
         return 0.0;
+
+    if (onProgress)
+        onProgress (1.0f);
 
     return (double) (best - halfRange);
 }

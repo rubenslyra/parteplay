@@ -152,6 +152,7 @@ set(PARTEPLAY_SOURCES
     Source/Plugin/PluginEditor.cpp
     Source/Audio/FilePlayer.cpp
     Source/Analysis/FingerprintWorker.cpp
+    Source/Analysis/ExternalBpm.cpp
     Source/Export/MidiMapExporter.cpp
     Source/Audio/PitchShifter.cpp
     Source/Ui/Text.cpp
@@ -183,7 +184,7 @@ juce_add_plugin(PartePlay
     # codigo: ate la, anunciar recurso inexistente no bundle e o que faz um
     # usuario reportar bug em funcao que nunca foi entregue.
     DESCRIPTION "Reproducao de referencia em sincronia com o transporte, com velocidade de treino, loop por compassos e fingerprint acustico local"
-    FORMATS VST3
+    FORMATS VST3 Standalone
     VST3_CATEGORIES "Fx|Utilities"
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
@@ -223,6 +224,17 @@ endif()
 
 target_sources(PartePlay PRIVATE ${PARTEPLAY_SOURCES})
 
+# O wrapper Standalone se recusa a compilar sem os modulos de dispositivo de audio
+# e de utilitarios (juce_audio_plugin_client_Standalone.cpp tem um #error pedindo
+# os dois). Vinculados SO ao alvo do Standalone, e nao ao codigo compartilhado:
+# o VST3 nao usa AudioDeviceManager, e linkar aqui evita arrastar gui_extra e
+# audio_devices para dentro do bundle .vst3.
+if(TARGET PartePlay_Standalone)
+    target_link_libraries(PartePlay_Standalone PRIVATE
+        juce::juce_audio_devices
+        juce::juce_audio_utils)
+endif()
+
 target_link_libraries(PartePlay PRIVATE juce::juce_audio_formats juce::juce_dsp chromaprint)
 
 juce_add_binary_data(BinaryData SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/PartePlay-Icon.png")
@@ -261,7 +273,9 @@ target_sources(PartePlayTests PRIVATE
     Tests/DomainTests.cpp
     Source/Audio/FilePlayer.cpp
     Source/Analysis/FingerprintWorker.cpp
+    Source/Analysis/ExternalBpm.cpp
     Source/Analysis/TempoAnalyser.cpp
+    Source/Export/MidiMapExporter.cpp
     Source/Ui/Text.cpp
     Source/Core/Tuning.cpp
 )

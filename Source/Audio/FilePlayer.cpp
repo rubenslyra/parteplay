@@ -1,4 +1,5 @@
 #include "FilePlayer.h"
+#include "ExternalBpm.h"
 #include "TempoAnalyser.h"
 
 #include <cmath>
@@ -108,9 +109,49 @@ void FilePlayer::readTags (const juce::AudioFormatReader& reader)
     taggedYear  = extractYear (firstTagValue (values, { "DATE", "YEAR", "ICRD", "TYER", "\xC2\xA9" "day" }));
 }
 
-void FilePlayer::loadFromFile (const juce::File& file)
+juce::int64 FilePlayer::countLeadingSilence (const juce::AudioBuffer<float>& buffer)
+{
+    const int numChannels = buffer.getNumChannels();
+    const int numSamples  = buffer.getNumSamples();
+
+    if (numChannels <= 0 || numSamples <= 0)
+        return 0;
+
+    // Zeros digitais exatos: qualquer amostra nao nula em qualquer canal
+    // interrompe a contagem. Nao ha limiar em dB aqui de proposito.
+    for (int i = 0; i < numSamples; ++i)
+        for (int ch = 0; ch < numChannels; ++ch)
+            if (buffer.getReadPointer (ch)[i] != 0.0f)
+                return static_cast<juce::int64> (i);
+
+    return static_cast<juce::int64> (numSamples);
+}
+
+int FilePlayer::measureCountFor (double durationSeconds, double bpm, int beatsPerBar)
+{
+    if (durationSeconds <= 0.0 || bpm <= 0.0 || beatsPerBar <= 0)
+        return 0;
+
+    const double beats = durationSeconds * bpm / 60.0;
+    return static_cast<int> (std::llround (beats / static_cast<double> (beatsPerBar)));
+}
+
+int FilePlayer::getMeasureCount() const noexcept
+{
+    return measureCountFor (durationSeconds, getBpm(), getBeatsPerBar());
+}
+
+void FilePlayer::loadFromFile (const juce::File& file, const LoadProgressFn& onProgress)
 {
     jassert (! file.isDirectory());
+
+    const auto report = [&onProgress] (float fraction, LoadStage stage)
+    {
+        if (onProgress)
+            onProgress (juce::jlimit (0.0f, 1.0f, fraction), stage);
+    };
+
+    report (0.0f, LoadStage::preparing);
 
     juce::AudioFormatManager formatManager;
     formatManager.registerBasicFormats();
@@ -123,10 +164,57 @@ void FilePlayer::loadFromFile (const juce::File& file)
         static_cast<int> (reader->numChannels),
         static_cast<int> (reader->lengthInSamples));
 
-    const bool ok = reader->read (newBuffer.get(), 0,
-                                  static_cast<int> (reader->lengthInSamples), 0, true, true);
+    // Leitura em blocos: e o unico jeito de a barra avancar durante o decode de
+    // um arquivo longo. O read() corrente e a parte lenta da carga fora da
+    // analise de andamento.
+    const auto totalSamples = static_cast<juce::int64> (reader->lengthInSamples);
+    const auto chunkSamples = static_cast<juce::int64> (1 << 18);
+    bool ok = true;
+
+    for (juce::int64 start = 0; start < totalSamples; start += chunkSamples)
+    {
+        const auto thisChunk = static_cast<int> (juce::jmin (chunkSamples, totalSamples - start));
+
+        if (! reader->read (newBuffer.get(), static_cast<int> (start), thisChunk, start, true, true))
+        {
+            ok = false;
+            break;
+        }
+
+        report (totalSamples > 0
+                    ? 0.02f + 0.43f * (float) ((double) (start + thisChunk) / (double) totalSamples)
+                    : 0.45f,
+                LoadStage::decoding);
+    }
+
     if (! ok)
         return;
+
+    report (0.47f, LoadStage::waveform);
+
+    // Passo A: remove o silencio inicial em zeros digitais exatos antes de
+    // qualquer medicao. O audio entregue ao player e o audio ajustado, entao
+    // duracao, forma de onda, BARS e loop ja nascem alinhados ao sample 0.
+    leadingSilenceSamples = countLeadingSilence (*newBuffer);
+
+    if (leadingSilenceSamples > 0
+        && leadingSilenceSamples < static_cast<juce::int64> (newBuffer->getNumSamples()))
+    {
+        const int remaining = static_cast<int> (static_cast<juce::int64> (newBuffer->getNumSamples())
+                                                 - leadingSilenceSamples);
+        auto trimmed = std::make_shared<juce::AudioBuffer<float>> (newBuffer->getNumChannels(), remaining);
+
+        for (int ch = 0; ch < trimmed->getNumChannels(); ++ch)
+            trimmed->copyFrom (ch, 0, *newBuffer,
+                               juce::jmin (ch, newBuffer->getNumChannels() - 1),
+                               static_cast<int> (leadingSilenceSamples), remaining);
+
+        newBuffer = std::move (trimmed);
+    }
+    else
+    {
+        leadingSilenceSamples = 0;
+    }
 
     audioBuffer      = std::move (newBuffer);
     std::atomic_store (&playbackBuffer, std::shared_ptr<const juce::AudioBuffer<float>>());
@@ -135,11 +223,51 @@ void FilePlayer::loadFromFile (const juce::File& file)
     fileSampleRate   = reader->sampleRate;
     sourceFileName   = file.getFileName();
     fileSizeBytes    = file.getSize();
-    durationSeconds  = fileSampleRate > 0.0 ? (double) reader->lengthInSamples / fileSampleRate : 0.0;
+
+    // Duracao util: o buffer ja sem o silencio inicial, nao o comprimento do arquivo.
+    durationSeconds  = (fileSampleRate > 0.0 && audioBuffer != nullptr)
+                           ? static_cast<double> (audioBuffer->getNumSamples()) / fileSampleRate
+                           : 0.0;
 
     readTags (*reader);
 
-    runTempoAnalysis();
+    estimatedBpm = 0.0;
+    beatsPerBar = 4;
+    detectedTuningHz = Tuning::defaultReferenceHz;
+
+    if (audioBuffer != nullptr && fileSampleRate > 0.0)
+    {
+        report (0.50f, LoadStage::tempo);
+
+        // A busca de andamento domina o tempo restante; os dois caminhos remapeiam
+        // o progresso para 0,50..0,85. A pipeline externa (ffmpeg + soundstretch)
+        // e a fonte autoritativa quando os binarios existem; o analisador nativo e
+        // o fallback quando eles faltam ou falham.
+        const auto tools = ExternalBpm::locateTools();
+
+        if (tools.valid())
+            estimatedBpm = ExternalBpm::estimateBpm (
+                file, tools,
+                [&report] (float p) { report (0.50f + 0.35f * p, LoadStage::tempo); });
+
+        if (estimatedBpm <= 0.0)
+            estimatedBpm = TempoAnalyser::estimateBpm (
+                fileSampleRate, *audioBuffer,
+                [&report] (float p) { report (0.50f + 0.35f * p, LoadStage::tempo); });
+
+        if (estimatedBpm > 0.0)
+            beatsPerBar = TempoAnalyser::estimateBeatsPerBar (fileSampleRate, *audioBuffer, estimatedBpm);
+
+        report (0.85f, LoadStage::tuning);
+
+        const double tuningCents = TempoAnalyser::estimateTuningCents (
+            fileSampleRate, *audioBuffer,
+            [&report] (float p) { report (0.85f + 0.13f * p, LoadStage::tuning); });
+        detectedTuningHz = Tuning::defaultReferenceHz * std::pow (2.0, tuningCents / 1200.0);
+
+    }
+
+    report (1.0f, LoadStage::publishing);
 }
 
 void FilePlayer::clear()
@@ -158,33 +286,8 @@ void FilePlayer::clear()
     beatsPerBar = 4;
     detectedTuningHz = Tuning::defaultReferenceHz;
     durationSeconds = 0.0;
-    measures = 0;
+    leadingSilenceSamples = 0;
     setLoop (false, 1, 1);
-}
-
-void FilePlayer::runTempoAnalysis()
-{
-    estimatedBpm = 0.0;
-    beatsPerBar = 4;
-    detectedTuningHz = Tuning::defaultReferenceHz;
-    measures = 0;
-
-    if (audioBuffer == nullptr || fileSampleRate <= 0.0)
-        return;
-
-    estimatedBpm = TempoAnalyser::estimateBpm (fileSampleRate, *audioBuffer);
-
-    if (estimatedBpm > 0.0)
-        beatsPerBar = TempoAnalyser::estimateBeatsPerBar (fileSampleRate, *audioBuffer, estimatedBpm);
-
-    const double tuningCents = TempoAnalyser::estimateTuningCents (fileSampleRate, *audioBuffer);
-    detectedTuningHz = Tuning::defaultReferenceHz * std::pow (2.0, tuningCents / 1200.0);
-
-    if (estimatedBpm > 0.0 && durationSeconds > 0.0)
-        measures = (int) std::llround (durationSeconds * estimatedBpm / 60.0 / (double) beatsPerBar);
-
-    if (measures < 0)
-        measures = 0;
 }
 
 double FilePlayer::getPlaybackDurationSeconds() const noexcept
@@ -203,7 +306,10 @@ bool FilePlayer::getLoopFractions (double& startFraction, double& endFraction) c
     startFraction = 0.0;
     endFraction   = 0.0;
 
-    if (! loopEnabled.load (std::memory_order_relaxed) || estimatedBpm <= 0.0)
+    const double effectiveBpm = getBpm();
+    const int meter = getBeatsPerBar();
+
+    if (! loopEnabled.load (std::memory_order_relaxed) || effectiveBpm <= 0.0 || meter <= 0)
         return false;
 
     const auto transformed = std::atomic_load (&playbackBuffer);
@@ -212,7 +318,7 @@ bool FilePlayer::getLoopFractions (double& startFraction, double& endFraction) c
     if (active == nullptr || active->getNumSamples() <= 0 || fileSampleRate <= 0.0)
         return false;
 
-    const double measureSamples = (beatsPerBar * 60.0 / estimatedBpm)
+    const double measureSamples = (meter * 60.0 / effectiveBpm)
                                   * appliedDurationScale.load (std::memory_order_relaxed) * fileSampleRate;
 
     if (measureSamples <= 0.0)
@@ -261,9 +367,11 @@ bool FilePlayer::fillOutput (juce::AudioBuffer<float>& dest,
     double srcPos = static_cast<double> (hostStartSample) * interpStep;
 
     // Loop de treino: repete o trecho entre os compassos [início, fim].
-    if (loopEnabled.load (std::memory_order_relaxed) && estimatedBpm > 0.0)
+    const double effectiveBpm = getBpm();
+
+    if (loopEnabled.load (std::memory_order_relaxed) && effectiveBpm > 0.0)
     {
-        const double measureSamples = (beatsPerBar * 60.0 / estimatedBpm) * scale * fileSampleRate;
+        const double measureSamples = (getBeatsPerBar() * 60.0 / effectiveBpm) * scale * fileSampleRate;
         const auto loopStart = static_cast<juce::int64> (std::lround ((loopStartMeasure.load (std::memory_order_relaxed) - 1) * measureSamples));
         const auto loopEnd   = static_cast<juce::int64> (std::lround (static_cast<double> (loopEndMeasure.load (std::memory_order_relaxed)) * measureSamples));
         const auto loopLen   = loopEnd - loopStart;

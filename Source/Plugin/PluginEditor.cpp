@@ -1,5 +1,6 @@
 ﻿#include "PluginEditor.h"
 #include "PluginProcessor.h"
+#include "FilePlayer.h"
 #include "ParameterIds.h"
 #include "Text.h"
 #include "Theme.h"
@@ -16,6 +17,251 @@
  #define PARTEPLAY_VERSION "?"
 #endif
 
+// Overlay modal da carga. Componente de tela cheia: cobre a janela, recebe os
+// cliques (bloqueando o que esta atras) e desenha um cartao central com a barra.
+// Fica no escopo global - e nao no anonimo - porque o cabecalho guarda um
+// unique_ptr<LoadingOverlay> por nome; um tipo de namespace anonimo nao casaria
+// com a declaracao antecipada do cabecalho.
+class LoadingOverlay : public juce::Component
+{
+public:
+    LoadingOverlay()
+    {
+        setInterceptsMouseClicks (true, true);
+    }
+
+    void setState (float newProgress, const juce::String& newStage)
+    {
+        const auto clamped = juce::jlimit (0.0f, 1.0f, newProgress);
+        if (std::abs (clamped - progress) < 1e-4f && newStage == stage)
+            return;
+
+        progress = clamped;
+        stage = newStage;
+        repaint();
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        // Veu: cobre 100% da janela e escurece o que esta atras, que e o sinal
+        // visual de "bloqueado".
+        g.fillAll (juce::Colour (0xff000000).withAlpha (0.72f));
+
+        auto area = getLocalBounds();
+        const int cardW = juce::jmin (520, juce::jmax (320, area.getWidth() - 80));
+        const int cardH = 196;
+        auto card = juce::Rectangle<int> (cardW, cardH).withCentre (area.getCentre());
+
+        g.setColour (Theme::panel.withAlpha (0.98f));
+        g.fillRoundedRectangle (card.toFloat(), 14.0f);
+        g.setColour (Theme::teal.withAlpha (0.85f));
+        g.drawRoundedRectangle (card.toFloat().reduced (0.5f), 14.0f, 1.5f);
+
+        auto inner = card.reduced (28, 22);
+
+        g.setColour (Theme::foreground);
+        g.setFont (Theme::font (Theme::Type::title, true));
+        g.drawText (Text::t ("Carregando o áudio"), inner.removeFromTop (28), juce::Justification::centredLeft);
+
+        g.setColour (Theme::muted);
+        g.setFont (Theme::font (Theme::Type::body));
+        g.drawText (stage, inner.removeFromTop (22), juce::Justification::centredLeft);
+
+        inner.removeFromTop (12);
+
+        auto bar = inner.removeFromTop (14).toFloat();
+        g.setColour (Theme::background.brighter (0.12f));
+        g.fillRoundedRectangle (bar, 7.0f);
+
+        const float fillWidth = juce::jmax (6.0f, bar.getWidth() * progress);
+        g.setColour (Theme::teal);
+        g.fillRoundedRectangle (bar.withWidth (fillWidth), 7.0f);
+
+        inner.removeFromTop (10);
+        g.setColour (Theme::muted);
+        g.setFont (Theme::font (Theme::Type::caption, true));
+        g.drawText (juce::String (juce::roundToInt (progress * 100.0f)) + " %",
+                    inner.removeFromTop (18), juce::Justification::centredLeft);
+    }
+
+private:
+    float progress = 0.0f;
+    juce::String stage;
+};
+
+// Botao de creditos. Icone desenhado no codigo ("i" em circulo), sem asset e sem
+// fonte de icones: mesma razao da bandeira vetorial do idioma.
+class InfoButton : public juce::Button
+{
+public:
+    InfoButton() : juce::Button ("creditos") {}
+
+    void paintButton (juce::Graphics& g, bool shouldDrawButtonAsHighlighted,
+                      bool shouldDrawButtonAsDown) override
+    {
+        auto area = getLocalBounds().toFloat().reduced (2.0f);
+        const float diameter = juce::jmin (area.getWidth(), area.getHeight());
+        const auto circle = juce::Rectangle<float> (diameter, diameter).withCentre (area.getCentre());
+
+        const bool hot = shouldDrawButtonAsHighlighted || shouldDrawButtonAsDown;
+        g.setColour (hot ? Theme::teal.withAlpha (0.22f) : Theme::surface);
+        g.fillEllipse (circle);
+        g.setColour (hot ? Theme::teal : Theme::line);
+        g.drawEllipse (circle.reduced (0.5f), 1.4f);
+
+        g.setColour (hot ? Theme::foreground : Theme::ice);
+        g.setFont (Theme::font (Theme::Type::control, true));
+        g.drawText ("i", circle, juce::Justification::centred);
+    }
+};
+
+// Conteudo do painel de creditos. Nomes proprios e URLs sao fatos (nao se
+// traduzem); as descricoes passam por Text::t e acompanham o idioma ativo.
+juce::String creditsBody()
+{
+    juce::String text;
+    const juce::String bullet = Text::from ("\xE2\x80\xA2 ");
+
+    const auto section = [&text] (const juce::String& title)
+    {
+        if (text.isNotEmpty())
+            text << "\n";
+
+        text << title.toUpperCase() << "\n";
+    };
+
+    const auto entry = [&text, &bullet] (const juce::String& line, const juce::String& home)
+    {
+        text << bullet << line << "\n";
+        text << "      " << home << "\n";
+    };
+
+    section (Text::t ("Bibliotecas de áudio"));
+    entry (Text::t ("SoundTouch / SoundStretch — processamento de áudio de código aberto por Olli Parviainen (Finlândia); análise de tempo e andamento."),
+           "https://www.surina.net/soundtouch/  ·  LGPL-2.1");
+    entry (Text::t ("FFmpeg / FFprobe / libavcodec — sistema multimídia multiplataforma iniciado por Fabrice Bellard em 2000; conversão de contêineres e codecs."),
+           "https://ffmpeg.org/  ·  LGPL-2.1 / GPL");
+    entry (Text::t ("Chromaprint — cálculo local da impressão digital acústica (LGPL-2.1)."),
+           "https://acoustid.org/chromaprint  ·  LGPL-2.1");
+
+    section (Text::t ("Interface e padrões"));
+    entry (Text::t ("JUCE — ambiente C++ multiplataforma para plugins de áudio; arquitetura idealizada por Julian 'Jules' Storer."),
+           "https://juce.com/  ·  AGPL-3.0 / comercial");
+    entry (Text::t ("Steinberg VST3 (IComponent / IEditController) — especificação de plugin para compatibilidade em tempo real com hostes de áudio."),
+           "https://steinbergmedia.github.io/vst3_doc/  ·  GPLv3 / proprietária");
+
+    section (Text::t ("Ambiente de compilação"));
+    entry (Text::t ("Compilado com Microsoft Visual Studio 2026 e Visual Studio Code em C++17."),
+           "https://visualstudio.microsoft.com/");
+
+    text << "\n" << Text::t ("Componentes de terceiros e suas licenças. O PartePlay é distribuído sob a GNU AGPL-3.0.") << "\n";
+
+    return text;
+}
+
+// Overlay de creditos: cobre a janela, bloqueia o que esta atras e mostra um
+// cartao rolavel com as tecnologias e as licencas. Fecha no botao, no Esc ou ao
+// clicar fora do cartao.
+class CreditsOverlay : public juce::Component
+{
+public:
+    CreditsOverlay()
+    {
+        setInterceptsMouseClicks (true, true);
+
+        closeButton.onClick = [this] { setVisible (false); };
+        addAndMakeVisible (closeButton);
+
+        body.setMultiLine (true);
+        body.setReadOnly (true);
+        body.setCaretVisible (false);
+        body.setScrollbarsShown (true);
+        body.setPopupMenuEnabled (false);
+        body.setColour (juce::TextEditor::backgroundColourId, juce::Colours::transparentBlack);
+        body.setColour (juce::TextEditor::outlineColourId, juce::Colours::transparentBlack);
+        body.setColour (juce::TextEditor::textColourId, Theme::foreground);
+        body.setFont (Theme::font (Theme::Type::body));
+        addAndMakeVisible (body);
+
+        refreshTexts();
+    }
+
+    void refreshTexts()
+    {
+        closeButton.setButtonText (Text::t ("Fechar"));
+        body.setText (creditsBody(), juce::dontSendNotification);
+        repaint();
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        g.fillAll (juce::Colour (0xff000000).withAlpha (0.72f));
+
+        const auto card = cardArea();
+        g.setColour (Theme::panel.withAlpha (0.99f));
+        g.fillRoundedRectangle (card.toFloat(), 14.0f);
+        g.setColour (Theme::teal.withAlpha (0.85f));
+        g.drawRoundedRectangle (card.toFloat().reduced (0.5f), 14.0f, 1.5f);
+
+        auto inner = card.reduced (24, 20);
+
+        g.setColour (Theme::foreground);
+        g.setFont (Theme::font (Theme::Type::title, true));
+        g.drawText (Text::t ("Créditos e tecnologias"), inner.removeFromTop (28),
+                    juce::Justification::centredLeft);
+
+        g.setColour (Theme::line);
+        g.fillRect (inner.removeFromTop (1));
+    }
+
+    void resized() override
+    {
+        auto card = cardArea().reduced (24, 20);
+        card.removeFromTop (34);
+
+        auto footer = card.removeFromBottom (34);
+        closeButton.setBounds (footer.removeFromRight (120));
+
+        card.removeFromBottom (8);
+        body.setBounds (card);
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (! cardArea().contains (e.getPosition()))
+            setVisible (false);
+    }
+
+    bool keyPressed (const juce::KeyPress& key) override
+    {
+        if (key.getKeyCode() == juce::KeyPress::escapeKey)
+        {
+            setVisible (false);
+            return true;
+        }
+
+        return false;
+    }
+
+    void visibilityChanged() override
+    {
+        if (isVisible())
+            grabKeyboardFocus();
+    }
+
+private:
+    juce::Rectangle<int> cardArea() const
+    {
+        const auto area = getLocalBounds();
+        const int cardW = juce::jmin (640, juce::jmax (360, area.getWidth() - 80));
+        const int cardH = juce::jmin (600, juce::jmax (320, area.getHeight() - 80));
+        return juce::Rectangle<int> (cardW, cardH).withCentre (area.getCentre());
+    }
+
+    juce::TextEditor body;
+    juce::TextButton closeButton;
+};
+
 namespace
 {
     //==============================================================================
@@ -27,6 +273,11 @@ namespace
     constexpr int cultureLabelWidth    = 82;
     constexpr int cultureSelectorHeight = 38;
 
+    // Botao de creditos: quadrado, logo a direita do seletor de idioma (ao lado
+    // da bandeira). Entra em todas as contas de largura reservada do cabecalho.
+    constexpr int creditsButtonWidth    = 38;
+    constexpr int creditsButtonGap      = 8;
+
     //==============================================================================
     // Rodape: versao + credito. A versao vem da macro do CMake, entao trocar o
     // project(...VERSION) troca o que aparece aqui - nao ha numero escrito no
@@ -34,6 +285,117 @@ namespace
     juce::String footerCredit()
     {
         return juce::String (PARTEPLAY_VERSION) + " · " + Text::t ("Produção: Rubens Lyra");
+    }
+
+    //==============================================================================
+    // Bandeira vetorial do idioma ativo. Substitui a seta do seletor: a seta nao
+    // dizia nada ao usuario, enquanto a bandeira diz o idioma de relance. Tudo
+    // desenhado no codigo, sem asset e sem dependencia de arquivo ou licenca.
+    constexpr int languageFlagZone = 46;
+
+    void drawLanguageFlag (juce::Graphics& g, juce::Rectangle<float> area, Text::Culture culture)
+    {
+        if (area.getWidth() < 6.0f || area.getHeight() < 4.0f)
+            return;
+
+        // Proporcao 3:2, centrada na zona reservada do combo.
+        const float width  = juce::jmin (area.getWidth(), area.getHeight() * 1.5f);
+        const float height = width / 1.5f;
+        const juce::Rectangle<float> flag (area.getCentreX() - width * 0.5f,
+                                           area.getCentreY() - height * 0.5f, width, height);
+
+        const juce::Colour blue  (0xff012169);
+        const juce::Colour red   (0xffc8102e);
+        const juce::Colour white (0xffffffff);
+
+        juce::Graphics::ScopedSaveState state (g);
+        juce::Path clip;
+        clip.addRoundedRectangle (flag, 2.0f);
+        g.reduceClipRegion (clip);
+
+        if (culture == Text::Culture::PortugueseBR)
+        {
+            g.setColour (juce::Colour (0xff009739));
+            g.fillRect (flag);
+
+            juce::Path diamond;
+            diamond.startNewSubPath (flag.getCentreX(), flag.getY());
+            diamond.lineTo (flag.getRight(), flag.getCentreY());
+            diamond.lineTo (flag.getCentreX(), flag.getBottom());
+            diamond.lineTo (flag.getX(), flag.getCentreY());
+            diamond.closeSubPath();
+            g.setColour (juce::Colour (0xfffedd00));
+            g.fillPath (diamond);
+
+            const float diameter = height * 0.46f;
+            g.setColour (blue);
+            g.fillEllipse (juce::Rectangle<float> (flag.getCentreX() - diameter * 0.5f,
+                                                   flag.getCentreY() - diameter * 0.5f,
+                                                   diameter, diameter));
+        }
+        else if (culture == Text::Culture::EnglishUK)
+        {
+            g.setColour (blue);
+            g.fillRect (flag);
+
+            juce::Path diagonals;
+            diagonals.startNewSubPath (flag.getX(), flag.getY());
+            diagonals.lineTo (flag.getRight(), flag.getBottom());
+            diagonals.startNewSubPath (flag.getRight(), flag.getY());
+            diagonals.lineTo (flag.getX(), flag.getBottom());
+
+            g.setColour (white);
+            g.strokePath (diagonals, juce::PathStrokeType (height * 0.34f));
+            g.setColour (red);
+            g.strokePath (diagonals, juce::PathStrokeType (height * 0.16f));
+
+            juce::Path cross;
+            cross.startNewSubPath (flag.getCentreX(), flag.getY());
+            cross.lineTo (flag.getCentreX(), flag.getBottom());
+            cross.startNewSubPath (flag.getX(), flag.getCentreY());
+            cross.lineTo (flag.getRight(), flag.getCentreY());
+
+            g.setColour (white);
+            g.strokePath (cross, juce::PathStrokeType (height * 0.34f));
+            g.setColour (red);
+            g.strokePath (cross, juce::PathStrokeType (height * 0.2f));
+        }
+        else if (culture == Text::Culture::EnglishUS)
+        {
+            g.setColour (white);
+            g.fillRect (flag);
+
+            const float stripe = height / 13.0f;
+            g.setColour (red);
+            for (int i = 0; i < 13; i += 2)
+                g.fillRect (flag.getX(), flag.getY() + static_cast<float> (i) * stripe,
+                            flag.getWidth(), stripe + 0.5f);
+
+            const juce::Rectangle<float> canton (flag.getX(), flag.getY(),
+                                                 flag.getWidth() * 0.42f, stripe * 7.0f);
+            g.setColour (blue);
+            g.fillRect (canton);
+
+            g.setColour (white);
+            const float dot = juce::jmax (1.0f, stripe * 0.28f);
+            for (int row = 0; row < 4; ++row)
+                for (int col = 0; col < 5; ++col)
+                    g.fillEllipse (canton.getX() + (static_cast<float> (col) + 0.5f)
+                                                   * canton.getWidth() / 5.0f - dot * 0.5f,
+                                   canton.getY() + (static_cast<float> (row) + 0.5f)
+                                                   * canton.getHeight() / 4.0f - dot * 0.5f,
+                                   dot, dot);
+        }
+        else // SpanishES
+        {
+            g.setColour (juce::Colour (0xffaa151b));
+            g.fillRect (flag);
+            g.setColour (juce::Colour (0xfff1bf00));
+            g.fillRect (flag.withTrimmedTop (height * 0.25f).withTrimmedBottom (height * 0.25f));
+        }
+
+        g.setColour (Theme::line);
+        g.drawRoundedRectangle (flag, 2.0f, 1.0f);
     }
 
     //==============================================================================
@@ -182,8 +544,23 @@ namespace
             return Theme::font (Theme::Type::control);
         }
 
-        void drawComboBox (juce::Graphics& g, int width, int height, bool, int textX, int textY,
-                           int textWidth, int textHeight,
+        void setFlagCulture (Text::Culture culture)
+        {
+            flagCulture = culture;
+        }
+
+        // Reserva a zona da bandeira. Sem isto o label interno corre ate width-30
+        // e o texto do idioma encosta na bandeira.
+        void positionComboBoxText (juce::ComboBox& box, juce::Label& label) override
+        {
+            label.setBounds (10, 1,
+                             juce::jmax (0, box.getWidth() - languageFlagZone - 10),
+                             box.getHeight() - 2);
+            label.setFont (getComboBoxFont (box));
+            label.setJustificationType (juce::Justification::centredLeft);
+        }
+
+        void drawComboBox (juce::Graphics& g, int width, int height, bool, int, int, int, int,
                            juce::ComboBox& box) override
         {
             auto area = juce::Rectangle<float> (0.0f, 0.0f, static_cast<float> (width),
@@ -194,28 +571,16 @@ namespace
             g.setColour (box.isEnabled() ? Theme::line : Theme::line.withAlpha (0.5f));
             g.drawRoundedRectangle (area, Theme::radiusSmall, 1.0f);
 
-            const float boxSide = static_cast<float> (height) * 0.28f;
-            juce::Path arrow;
-            arrow.addTriangle (area.getRight() - height * 0.62f, area.getCentreY() - boxSide * 0.5f,
-                               area.getRight() - height * 0.38f, area.getCentreY() - boxSide * 0.5f,
-                               area.getRight() - height * 0.50f, area.getCentreY() + boxSide * 0.7f);
-
-            g.setColour (box.isEnabled() ? Theme::azure : Theme::muted);
-            g.fillPath (arrow);
-
-            // Geometria do texto exatamente como a LookAndFeel_V2 faz: insere a
-            // esquerda para o texto nao encostar na borda e encolhe a direita
-            // para nao invadir a seta. positionComboBoxText ja entregou textWidth
-            // medido ate o inicio da seta, entao nao ha nada aqui para adivinhar.
-            const juce::Rectangle<float> textArea (static_cast<float> (textX) + 4.0f,
-                                                   static_cast<float> (textY),
-                                                   static_cast<float> (juce::jmax (0, textWidth - 5)),
-                                                   static_cast<float> (textHeight));
-
-            g.setColour (box.isEnabled() ? Theme::foreground : Theme::muted.withAlpha (0.55f));
-            g.setFont (getComboBoxFont (box));
-            g.drawText (box.getText(), textArea, juce::Justification::centredLeft, true);
+            // So a bandeira. O texto do item selecionado e desenhado pelo label
+            // interno, posicionado por positionComboBoxText. O desenho manual de
+            // texto que existia aqui foi REMOVIDO por completo: ele duplicava o
+            // rotulo e aparecia um sobre o outro.
+            drawLanguageFlag (g, area.removeFromRight (static_cast<float> (languageFlagZone)),
+                              flagCulture);
         }
+
+    private:
+        Text::Culture flagCulture = Text::Culture::PortugueseBR;
     };
 
     //==============================================================================
@@ -533,6 +898,23 @@ namespace
         juce::String symbol;
         bool dimmed = false;
     };
+
+    // Texto do estagio de carga. O identificador vem do nucleo (FilePlayer); a
+    // traducao mora aqui, porque a tabela de strings e coisa da UI.
+    juce::String loadingStageText (int stage)
+    {
+        switch (static_cast<FilePlayer::LoadStage> (stage))
+        {
+            case FilePlayer::LoadStage::preparing:  return Text::t ("Preparando o carregamento");
+            case FilePlayer::LoadStage::decoding:   return Text::t ("Lendo o áudio");
+            case FilePlayer::LoadStage::waveform:   return Text::t ("Desenhando a forma de onda");
+            case FilePlayer::LoadStage::tempo:      return Text::t ("Estimando o andamento");
+            case FilePlayer::LoadStage::tuning:     return Text::t ("Estimando a afinação");
+            case FilePlayer::LoadStage::publishing: return Text::t ("Publicando o resultado");
+        }
+
+        return {};
+    }
 
 } // anonymous namespace
 
@@ -965,9 +1347,9 @@ public:
         const auto year      = processor.getSongYear();
         const double bpm     = processor.getAudioBpm();
 
-        // O anel carrega o BPM porque é o dado que se procura de relance. A
-        // precisão de 0,5 BPM do analisador cabe no anel; o valor fino fica
-        // na linha de baixo, com a marcação de estimativa.
+        // O anel carrega o BPM porque e o dado que se procura de relance. Este
+        // painel mostra em PONTO FIXO (inteiro): a ficha da cancao registra o
+        // valor redondo. O valor fino, em PONTO FLUTUANTE, e o painel 05.
         const bool hasBpm = bpm > 0.0;
         ring.setSymbol (hasBpm ? compactNumber (bpm) : juce::String ("--"));
         ring.setDimmed (! hasBpm);
@@ -986,7 +1368,7 @@ public:
                            juce::dontSendNotification);
         yearValue.setText (year.isNotEmpty() ? year : missingValue(),
                            juce::dontSendNotification);
-        bpmValue.setText (hasBpm ? (Text::number (bpm, 1) + bpmEstimatedSuffix)
+        bpmValue.setText (hasBpm ? (compactNumber (bpm) + bpmEstimatedSuffix)
                                  : missingValue(),
                            juce::dontSendNotification);
 
@@ -1288,12 +1670,28 @@ public:
         addAndMakeVisible (barsTile);
         addAndMakeVisible (durationTile);
 
+        // Botao de fonte do BPM: alterna entre o valor real medido pelo
+        // SoundStretch e o padrao corrigido (x2). Nao e automacao: e escolha de
+        // leitura, entao nao entra no APVTS.
+        bpmSourceButton.onClick = [this]
+        {
+            processor.setBpmDoubled (! processor.isBpmDoubled());
+            refreshState();
+            repaint();
+        };
+        addAndMakeVisible (bpmSourceButton);
+
         exportButton.onClick = [this] { editor.requestExportMap(); };
         addAndMakeVisible (exportButton);
 
         styleCaption (noteLabel);
         noteLabel.setColour (juce::Label::textColourId, Theme::muted.withAlpha (0.85f));
         addAndMakeVisible (noteLabel);
+
+        styleCaption (trimLabel);
+        trimLabel.setColour (juce::Label::textColourId, Theme::signal);
+        trimLabel.setJustificationType (juce::Justification::topLeft);
+        addAndMakeVisible (trimLabel);
 
         styleCaption (messageLabel);
         messageLabel.setColour (juce::Label::textColourId, Theme::teal);
@@ -1319,7 +1717,7 @@ public:
         const auto empty = Text::t ("--");
 
         bpmTile.setContent (Text::t ("BPM"),
-                            hasAnalysis ? Text::number (bpm, 1) : empty,
+                            hasAnalysis ? Text::number (bpm, 3) : empty,
                             hasAnalysis ? Theme::ice : Theme::muted);
 
         barsTile.setContent (Text::t ("Compassos"),
@@ -1329,6 +1727,26 @@ public:
         durationTile.setContent (Text::t ("Duração"),
                                  hasAnalysis ? Text::time (processor.getDurationSeconds()) : empty,
                                  hasAnalysis ? Theme::foreground : Theme::muted);
+
+        bpmSourceButton.setButtonText (processor.isBpmDoubled()
+                                           ? Text::t ("Fonte: padrão (×2)")
+                                           : Text::t ("Fonte: real (SoundStretch)"));
+
+        // Aviso de adaptacao: o audio foi cortado no inicio para casar com o
+        // compasso 1 do editor. Sem isso o usuario nao saberia por que a onda
+        // comeca diferente do arquivo original.
+        if (processor.wasAudioTrimmed())
+        {
+            trimLabel.setText (Text::t ("Áudio ajustado") + ": "
+                                   + Text::time (processor.getLeadingSilenceSeconds())
+                                   + Text::t (" de silêncio inicial removido para alinhar ao início do editor."),
+                               juce::dontSendNotification);
+            trimLabel.setVisible (true);
+        }
+        else
+        {
+            trimLabel.setVisible (false);
+        }
 
         exportButton.setEnabled (hasAnalysis);
         messageLabel.setText (editor.exportMessage(), juce::dontSendNotification);
@@ -1352,17 +1770,20 @@ public:
         row.items.add (juce::FlexItem (durationTile).withFlex (1.0f).withMargin (juce::FlexItem::Margin (0, 0, 0, 4)));
         row.performLayout (tilesRow);
 
-        space (area, 8);
+        space (area, 6);
+
+        place (bpmSourceButton, takeTop (area, 26));
+        space (area, 6);
 
         place (exportButton, takeTop (area, 30));
         space (area, 6);
 
-        // Os dois textos vem de baixo para cima, nesta ordem: a mensagem do
-        // exportar fica colada no rodape e a nota de estimativa logo acima dela.
-        // Como takeBottom devolve vazio quando nao cabem, em janela baixa eles
-        // somem um a um, a nota primeiro - antes eles dois colapsavam em 0px no
-        // mesmo ponto, e era isso o ruido horizontal na base do painel.
+        // Os textos vem de baixo para cima, nesta ordem: a mensagem do exportar
+        // fica colada no rodape, o aviso de audio ajustado acima dela e a nota de
+        // estimativa por ultimo. Como takeBottom devolve vazio quando nao cabem,
+        // em janela baixa eles somem um a um, a nota primeiro.
         place (messageLabel, takeBottom (area, 18));
+        place (trimLabel, takeBottom (area, 18));
         place (noteLabel, takeBottom (area, 28));
     }
 
@@ -1370,8 +1791,10 @@ private:
     PlayScoreEditor& editor;
     juce::String title;
     StatTile bpmTile, barsTile, durationTile;
+    juce::TextButton bpmSourceButton;
     juce::TextButton exportButton;
     juce::Label noteLabel;
+    juce::Label trimLabel;
     juce::Label messageLabel;
 };
 
@@ -1409,6 +1832,11 @@ PlayScoreEditor::PlayScoreEditor (PlayScoreProcessor& p)
 {
     lookAndFeel = std::make_unique<StudioLookAndFeel>();
     setLookAndFeel (lookAndFeel.get());
+    static_cast<StudioLookAndFeel*> (lookAndFeel.get())->setFlagCulture (Text::getCulture());
+
+    // keyPressed so chega ao editor se ele tiver o foco de teclado. Sem isto o
+    // Ctrl+D e ignorado quando a janela do plugin abre dentro do hospedeiro.
+    setWantsKeyboardFocus (true);
 
     trackPanel      = std::make_unique<TrackPanel> (*this, p);
     transportPanel  = std::make_unique<TransportPanel> (*this, p);
@@ -1443,6 +1871,29 @@ PlayScoreEditor::PlayScoreEditor (PlayScoreProcessor& p)
         languageChanged();
     };
     addAndMakeVisible (cultureSelector);
+
+    // Botao de informacoes a direita do seletor, ao lado da bandeira do idioma.
+    creditsButton = std::make_unique<InfoButton>();
+    creditsButton->setTooltip (Text::t ("Créditos e tecnologias"));
+    creditsButton->onClick = [this]
+    {
+        creditsOverlay->refreshTexts();
+        creditsOverlay->setVisible (true);
+        creditsOverlay->toFront (true);
+    };
+    addAndMakeVisible (creditsButton.get());
+
+    // Overlay por ultimo: como ultima crianca, desenha acima de todos os paineis.
+    // Invisivel ate uma carga comecar.
+    loadingOverlay = std::make_unique<LoadingOverlay>();
+    addAndMakeVisible (loadingOverlay.get());
+    loadingOverlay->setVisible (false);
+
+    // O overlay de creditos fica acima ate do de carga: abrir as informacoes nao
+    // pode ser encoberto por uma barra de progresso.
+    creditsOverlay = std::make_unique<CreditsOverlay>();
+    addAndMakeVisible (creditsOverlay.get());
+    creditsOverlay->setVisible (false);
 
     // Proporção 5:4 (referência visual 2000x1600), redimensionável pelo hospedeiro.
     // O padrão é o menor tamanho em que os cinco painéis mostram todo o conteúdo,
@@ -1513,6 +1964,13 @@ void PlayScoreEditor::resized()
     // Com 24px de combo a linha do popup saia com 22px e um texto espremido - foi
     // o que o usuario reportou como menu "minusculo". Subir o combo para 38px
     // corrige os dois de uma vez, sem precisar mexer em ItemHeight.
+    // O botao de creditos fica no canto, a direita do seletor: assim a bandeira
+    // do combo e o "i" ficam lado a lado, como pedido.
+    creditsButton->setBounds (cultureBounds.removeFromRight (creditsButtonWidth)
+                                           .withTrimmedTop (cultureTop)
+                                           .withHeight (cultureSelectorHeight));
+    cultureBounds.removeFromRight (creditsButtonGap);
+
     cultureSelector.setBounds (cultureBounds.removeFromRight (cultureSelectorWidth)
                                               .withTrimmedTop (cultureTop)
                                               .withHeight (cultureSelectorHeight));
@@ -1548,6 +2006,16 @@ void PlayScoreEditor::resized()
         rightColumn.removeFromTop (gap);
         meterPanel->setBounds (rightColumn);
     }
+
+    // Os overlays cobrem a janela inteira; reafirmam-se no topo a cada layout. Os
+    // creditos ficam acima do de carga quando visiveis.
+    loadingOverlay->setBounds (getLocalBounds());
+    loadingOverlay->toFront (false);
+
+    creditsOverlay->setBounds (getLocalBounds());
+
+    if (creditsOverlay->isVisible())
+        creditsOverlay->toFront (false);
 }
 
 void PlayScoreEditor::paint (juce::Graphics& g)
@@ -1581,6 +2049,7 @@ void PlayScoreEditor::paint (juce::Graphics& g)
     const int badgeWidthState = 108;
     const int badgeWidthMode  = 60;
     const int reservedRight   = cultureSelectorWidth + cultureLabelWidth + 20
+                                + creditsButtonWidth + creditsButtonGap
                                 + badgeWidthState + badgeWidthMode + 20;
 
     auto textArea = cursor.withWidth (juce::jmax (120, cursor.getWidth() - reservedRight));
@@ -1599,7 +2068,8 @@ void PlayScoreEditor::paint (juce::Graphics& g)
     // 300px fora da janela - os selos "Tocando"/"VST3" nao apareciam.
     const float badgeY = static_cast<float> (header.getY()) + 18.0f;
     float badgeRight = static_cast<float> (header.getRight())
-                         - static_cast<float> (cultureSelectorWidth + cultureLabelWidth + 20);
+                         - static_cast<float> (cultureSelectorWidth + cultureLabelWidth + 20
+                                               + creditsButtonWidth + creditsButtonGap);
 
     badgeRight -= static_cast<float> (badgeWidthState);
     const bool playing = processor.isTransportPlaying();
@@ -1635,7 +2105,28 @@ void PlayScoreEditor::paint (juce::Graphics& g)
 void PlayScoreEditor::timerCallback()
 {
     refreshAllState();
+    refreshLoadingOverlay();
     repaint (headerArea());
+}
+
+void PlayScoreEditor::refreshLoadingOverlay()
+{
+    if (! processor.isLoadingAudio())
+    {
+        if (loadingOverlay->isVisible())
+            loadingOverlay->setVisible (false);
+
+        return;
+    }
+
+    loadingOverlay->setState (processor.getLoadProgress(),
+                              loadingStageText (processor.getLoadStage()));
+
+    if (! loadingOverlay->isVisible())
+    {
+        loadingOverlay->setVisible (true);
+        loadingOverlay->toFront (false);
+    }
 }
 
 #if PARTEPLAY_DEBUG_OVERLAY
@@ -1678,6 +2169,25 @@ void PlayScoreEditor::paintDebugOverlay (juce::Graphics& g)
                      + "   legenda " + juce::String (Theme::Type::caption)
                      + "   secao " + juce::String (Theme::Type::section));
 
+    // Diagnostico da divergencia de tempo: o que o host declara, o que o audio
+    // revela e o que o transporte entrega. "nao informado" e diferente de zero.
+    const double hostBpm = processor.getHostBpm();
+    const int hostNum = processor.getHostTimeSignatureNumerator();
+    const int hostDen = processor.getHostTimeSignatureDenominator();
+    const bool hostPlaying = processor.isTransportPlaying();
+
+    lines.add ("host      bpm " + (hostBpm > 0.0 ? juce::String (hostBpm, 2)
+                                                 : juce::String ("nao informado"))
+                     + "   compasso " + (hostNum > 0
+                            ? juce::String (hostNum) + "/" + juce::String (hostDen)
+                            : juce::String ("nao informado")));
+    lines.add ("transporte " + juce::String (hostPlaying ? "tocando" : "parado")
+                     + "   amostra " + juce::String (processor.getTransportSample())
+                     + "   ppq " + juce::String (processor.getHostPpqPosition(), 2));
+    lines.add ("analise   bpm " + juce::String (processor.getAudioBpm(), 2)
+                     + "   compasso " + juce::String (processor.getBeatsPerBar()) + "/4"
+                     + "   compassos " + juce::String (processor.getMeasureCount()));
+
     const auto font = Theme::monoFont (12.0f);
 
     int widest = 0;
@@ -1707,8 +2217,24 @@ void PlayScoreEditor::paintDebugOverlay (juce::Graphics& g)
 }
 #endif
 
+void PlayScoreEditor::visibilityChanged()
+{
+    // Ao abrir, puxa o foco de teclado para o editor: e o unico jeito de o
+    // keyPressed do Ctrl+D ser chamado quando o host monta a janela do plugin.
+    if (isShowing())
+        grabKeyboardFocus();
+}
+
 bool PlayScoreEditor::keyPressed (const juce::KeyPress& key)
 {
+    // Esc fecha os creditos mesmo se o foco nao tiver chegado ao overlay.
+    if (key.getKeyCode() == juce::KeyPress::escapeKey
+        && creditsOverlay != nullptr && creditsOverlay->isVisible())
+    {
+        creditsOverlay->setVisible (false);
+        return true;
+    }
+
 #if PARTEPLAY_DEBUG_OVERLAY
     if (key.getKeyCode() == 'd' && key.getModifiers().isCtrlDown())
     {
@@ -1725,6 +2251,13 @@ void PlayScoreEditor::refreshAllTexts()
 {
     cultureLabel.setText (Text::t ("Idioma:"), juce::dontSendNotification);
 
+    // O botao e o overlay de creditos tambem seguem o idioma ativo.
+    if (creditsButton != nullptr)
+        creditsButton->setTooltip (Text::t ("Créditos e tecnologias"));
+
+    if (creditsOverlay != nullptr)
+        creditsOverlay->refreshTexts();
+
     for (auto* panel : panels)
         panel->refreshTexts();
 }
@@ -1739,6 +2272,17 @@ void PlayScoreEditor::languageChanged()
 {
     refreshAllTexts();
     refreshAllState();
+
+    // A bandeira do seletor acompanha o idioma ativo.
+    static_cast<StudioLookAndFeel*> (lookAndFeel.get())->setFlagCulture (Text::getCulture());
+    cultureSelector.repaint();
+
+    if (loadingOverlay != nullptr)
+        loadingOverlay->repaint();
+
+    if (creditsOverlay != nullptr)
+        creditsOverlay->repaint();
+
     repaint();
 }
 
@@ -1754,10 +2298,19 @@ void PlayScoreEditor::requestLoadAudio()
         {
             const auto result = chooser.getResult();
 
-            if (result != juce::File())
-                processor.loadAudioFile (result);
-
             lastExportMessage.clear();
+
+            if (result != juce::File())
+            {
+                processor.beginLoadAudioFile (result);
+
+                // Mostra o overlay ja no clique: a primeira passada do timer viria
+                // so 50 ms depois e o arquivo pareceria ignorado.
+                loadingOverlay->setState (0.0f, loadingStageText (0));
+                loadingOverlay->setVisible (true);
+                loadingOverlay->toFront (false);
+            }
+
             refreshAllState();
         });
 }

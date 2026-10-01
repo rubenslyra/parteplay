@@ -7,6 +7,8 @@ components below, each under its own licence.
 This file exists because PartePlay **statically links** Chromaprint, and the LGPL 2.1
 requires the recipient of a binary to be told which parts are under which licence and
 be given the corresponding source. See [issue #4](https://github.com/rubenslyra/parteplay/issues/4).
+It also covers the FFmpeg and SoundTouch executables bundled under `resources/bin/`
+for the external tempo pipeline (issue #1).
 
 Every licence string quoted here was read from the licence file actually shipped in the
 source tree, not from memory. The path where each one was read is given so the claim
@@ -24,6 +26,8 @@ can be re-checked.
 | JUCE 9.0.2 | AGPL-3.0 **or** commercial | Corresponding source of the whole work | This repository, plus the JUCE tag `9.0.2` |
 | VST3 SDK | MIT | Attribution only | Bundled in the JUCE checkout |
 | LV2 SDK (lilv, serd, sord) | ISC | Attribution only | Bundled in the JUCE checkout |
+| FFmpeg (ffmpeg.exe, ffprobe.exe, av* DLLs) | LGPL v3 | Distribution of the licence text; separate process, not linked | `resources/bin/`, upstream BtbN/FFmpeg-Builds |
+| SoundTouch / SoundStretch (soundstretch.exe) | LGPL v2.1 | Distribution of the licence text; separate process, not linked | `resources/bin/`, upstream surina.net |
 
 The compliance mechanism that satisfies the LGPL source obligation is already in
 place: `Chromaprint-Dependences/chromaprint-1.6.1.tar.gz` is committed to this
@@ -141,10 +145,50 @@ PartePlay does not ship an LV2 build, but the sources are compiled into the
 
 ---
 
+## 5. FFmpeg — bundled executables
+
+- **Files:** `ffmpeg.exe`, `ffprobe.exe`, `avcodec-63.dll`, `avdevice-63.dll`,
+  `avfilter-12.dll`, `avformat-63.dll`, `avutil-61.dll`, `swresample-7.dll`,
+  `swscale-10.dll`
+- **Where:** `resources/bin/` in the repository; `scripts/install-vst3.ps1` copies
+  it to `%APPDATA%/PartePlay/bin`, which is where the plugin looks for it (the VST3
+  host owns the process, so a path next to the plugin DLL is not reliable)
+- **Upstream:** <https://github.com/BtbN/FFmpeg-Builds>, package
+  `ffmpeg-master-latest-win64-lgpl-shared`
+- **Licence:** **LGPL v3**
+- **Read from:** `resources/bin/LICENSE-ffmpeg.txt`, shipped verbatim from the
+  downloaded package
+
+These are **separate programs**, invoked by `Source/Analysis/ExternalBpm.cpp` as a
+child process to convert the source file to WAV. They are not linked into the
+PartePlay binary, so the LGPL relinking obligation does not extend to PartePlay's own
+code; the obligation is to ship the licence text (done) and to identify the version.
+
+The build is a rolling upstream master, not a pinned release, because BtbN publishes
+binary builds from `master`. It is identified by the `av*` SONAMEs above. To replace
+it with a reproducible pin, drop a dated BtbN release into `resources/bin/` and update
+this section and `resources/bin/README.md`.
+
+## 6. SoundTouch / SoundStretch — bundled executable
+
+- **File:** `soundstretch.exe`
+- **Where:** `resources/bin/` in the repository; deployed to `%APPDATA%/PartePlay/bin`
+  by `scripts/install-vst3.ps1`, same as FFmpeg
+- **Upstream:** <https://www.surina.net/soundtouch/>, package `soundstretch-v2.3.3.zip`
+- **Version:** 2.3.3
+- **Copyright:** Copyright (c) Olli Parviainen
+- **Licence:** **LGPL v2.1**
+- **Read from:** `resources/bin/LICENSE-soundtouch.txt`, shipped verbatim from the
+  SoundTouch source tarball `soundtouch-2.3.3.tar.gz` (`COPYING.TXT`)
+
+Like FFmpeg, this is a separate program launched as a child process (the `-bpm`
+switch prints `Detected BPM rate <value>`), not code linked into PartePlay.
+
 ## Not bundled
 
-- **FFmpeg (full)** — not a dependency. Only the avresample subset vendored inside
-  Chromaprint is present.
+- **FFmpeg as a linked library** — not linked. Only the avresample subset vendored
+  inside Chromaprint is compiled into the binary; the full FFmpeg above is an
+  external process.
 - **AcoustID application key** — intentionally absent. The fingerprint is computed
   fully offline; online lookup is disabled, and the key would come from the
   environment, never from the binary.

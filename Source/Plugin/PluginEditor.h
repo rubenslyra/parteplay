@@ -26,6 +26,9 @@ class TransportPanel;
 class SongSheetPanel;
 class TuningPanel;
 class MeterPanel;
+class LoadingOverlay;
+class InfoButton;
+class CreditsOverlay;
 
 // Painel da interface: desenha o próprio chrome ("vidro fosco") e participa dos
 // dois ciclos de atualização — textos (troca de idioma) e estado (timer).
@@ -63,6 +66,7 @@ public:
 
     void paint (juce::Graphics& g) override;
     void resized() override;
+    void visibilityChanged() override;
 
     PlayScoreProcessor& getProcessor() noexcept { return processor; }
 
@@ -78,6 +82,7 @@ private:
     bool keyPressed (const juce::KeyPress& key) override;
     void refreshAllTexts();
     void refreshAllState();
+    void refreshLoadingOverlay();
     juce::Rectangle<int> headerArea() const;
     juce::Rectangle<int> bodyArea() const;
     juce::Rectangle<int> footerArea() const;
@@ -104,6 +109,14 @@ private:
     std::unique_ptr<juce::FileChooser> fileChooser;
     std::unique_ptr<juce::FileChooser> exportChooser;
     juce::String lastExportMessage;
+
+    // Overlay modal de carga: cobre a janela inteira, bloqueia os cliques e fica
+    // acima de todos os paineis enquanto o audio carrega em segundo plano.
+    std::unique_ptr<LoadingOverlay> loadingOverlay;
+
+    // Botao de informacoes (ao lado da bandeira) e o overlay modal que ele abre.
+    std::unique_ptr<InfoButton>     creditsButton;
+    std::unique_ptr<CreditsOverlay> creditsOverlay;
 
     static constexpr int margin       = 20;
     static constexpr int gap          = 14;
