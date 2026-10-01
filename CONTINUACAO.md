@@ -322,6 +322,11 @@ Ambos gitignored. **Não commitar.** O post do LinkedIn **não** foi publicado.
 - `Text.*` i18n pt-BR / en-GB / en-US / es-ES.
 - `Tests/DomainTests.cpp`: **461 verificações, 0 falhas** (confirmado rodando em
   01/10/2026 no preset `msvc-2026`; 415 antes do corte de silêncio/BARS, 401 em 30/09/2026).
+- Mídia de demonstração em `docs/`: `screenshot-v0.2.2-release.png` substitui o
+  `screenshot-vst-used.png` (removido); `screenshot-v0.2.2-release.mp4` é a demo da
+  v0.2.2, recomprimida de 182,7 MiB para 19,0 MiB com o ffmpeg LGPL embarcado
+  (`libopenh264`, resolução nativa, SSIM 0.989) — o original passava o limite de
+  100 MiB/arquivo do GitHub. `*.mp4 binary` no `.gitattributes`.
 - `secrets` é um **arquivo** de 311 bytes na raiz do repo (OAuth do GitHub + chave
   AcoustID), não uma pasta. O `.gitignore` cobre os dois casos.
 - `develop` **está no GitHub** e ficou 7 commits à frente de `origin/develop` até
@@ -360,3 +365,20 @@ elevado:
 Get-FileHash "C:\Program Files\Common Files\VST3\PartePlay.vst3\Contents\x86_64-win\PartePlay.vst3"
 ```
 O hash impresso pelo script tem de bater com o do bundle em `build\msvc-2026`.
+
+## Próximos passos (02/10/2026)
+
+1. **Validar no MuseScore** (shell elevado, MuseScore fechado): `.\scripts\build.ps1`
+   e `.\scripts\install-vst3.ps1 -SkipTests`; conferir o hash do bundle instalado
+   contra `build\msvc-2026`. É o único passo do escopo que não deu para fechar hoje
+   por falta de privilégio.
+2. **Sincronia de compassos com áudio real**: o caso relatado (BPM real ~103 contra
+   137,5) só se reproduz com o arquivo do usuário — sem ele, não mexer em número no
+   escuro (agent.md). Com o arquivo, comparar o BPM do SoundStretch, o ×2 padrão e o
+   BARS do host.
+3. **Push**: `release/0.2.2` tem o commit de código (`503d8e8`) e o de docs de hoje
+   **só locais**. Enviar para `origin` e acompanhar o **PR #7** (`gh pr checks 7`).
+4. **Propagar**: merge do PR #7 em `develop`; depois `develop` → `main` para liberar
+   a 0.2.2.
+5. **Retomar metadados**: atualizar `epic/identidade-do-fonograma` com `develop`
+   antes do trabalho de ISRC/ano.

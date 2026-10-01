@@ -36,10 +36,12 @@ if something breaks. The stable release follows the RC once the feedback settles
 AGPL-3.0 · free and open-source · VST3 for Windows, Linux and macOS. The plugin is unsigned, so your
 host will ask you to confirm it the first time you load it — see [Install](#install).
 
-![PartePlay loaded as an effect in MuseScore 4, with the reference recording analysed](docs/screenshot-vst-used.png)
+![PartePlay loaded as an effect in MuseScore 4, with the reference recording analysed](docs/screenshot-v0.2.2-release.png)
 
 *PartePlay loaded as an effect in MuseScore 4, with the reference recording analysed and ready to
 play in sync with the score.*
+
+[▶ Watch the v0.2.2 demo](docs/screenshot-v0.2.2-release.mp4)
 
 ---
 
