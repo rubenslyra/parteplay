@@ -27,17 +27,42 @@ DAW, supports **training speed and bar-based looping**, computes a **local audio
 
 ## Download
 
-**0.3.0 is published as source.** The `develop`/`main` tree and the `v0.3.0` tag carry the current
-code; the per-platform binaries are built and tested by CI on every push, and a packaged build for
-each platform is not attached to the tag yet.
+**0.3.0 ships binaries.** Each one was built and tested by CI on the same commit the `v0.3.0` tag
+points at — that is the point of the packaging: the artifact you download is the artifact the
+four-platform matrix compiled, not a rebuild from someone else's machine.
 
-The last **packaged** build is the **v0.2.0-rc.1 release candidate** — still the download below.
-It is older than this tree: it does not have the external tempo pipeline, the leading-silence trim
-or the MIDI time-map export.
+| Platform | Architecture | File |
+|---|---|---|
+| Windows | x86-64 | `PartePlay-0.3.0-win-x64.zip` |
+| macOS | universal (Intel + Apple Silicon) | `PartePlay-0.3.0-macos-universal.zip` |
+| Linux | x86-64 | `PartePlay-0.3.0-linux-x64.zip` |
 
-**[⬇ Download PartePlay VST3 — v0.2.0-rc.1](https://github.com/rubenslyra/parteplay/releases/tag/v0.2.0-rc.1)**
+**[⬇ Download from the v0.3.0 release](https://github.com/rubenslyra/parteplay/releases/tag/v0.3.0)**
 
-To build 0.3.0 yourself, follow [Build](#build) — it is four platforms and one C++ toolchain.
+Every asset has a `.sha256` file, and the release carries a `SHA256SUMS.txt` covering all of them:
+
+```bash
+sha256sum -c SHA256SUMS.txt          # Linux / macOS
+Get-FileHash .\PartePlay-0.3.0-win-x64.zip   # Windows
+```
+
+### Optional: the external tempo tools (Windows)
+
+`PartePlay-0.3.0-tools-win-x64.zip` (~65 MB) is **separate on purpose**. It carries `ffmpeg` and
+`soundstretch`, and it is the difference between the plugin running the SoundStretch tempo
+analysis and running only the native analyser.
+
+The plugin bundle is ~6.5 MB and does not contain these tools, so nobody pays a 65 MB download
+for a feature that only some workflows use. Unpack it and drop the `bin` folder into either:
+
+- `resources/bin` **next to the executable**, inside the installed bundle — that is
+  `PartePlay.vst3\Contents\x86_64-win\resources\bin`; or
+- `%APPDATA%\PartePlay\bin` — per-user, no admin rights, survives a reinstall of the plugin.
+
+`PARTEPLAY_TOOLS_DIR` overrides both if you keep them somewhere else.
+
+On Linux and macOS there is nothing to unpack: those `ffmpeg` and `soundstretch` builds are
+Windows binaries, and the native analyser runs on its own there.
 
 AGPL-3.0 — free and open-source — VST3 for Windows, Linux and macOS. The plugin is unsigned, so your
 host will ask you to confirm it the first time you load it — see [Install](#install).

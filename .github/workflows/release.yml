@@ -1,0 +1,319 @@
+name: Release
+
+# Anexa os binarios a release da tag. Nao e o build: os binarios vem do run
+# verde de CI do MESMO commit da tag, entao o que o usuario baixa e
+# exatamente o que a matriz de quatro plataformas compilou e testou.
+#
+# Por que nao compilar aqui de novo: o passo de empacotamento do ci.yml tem
+# historico documentado de escolher a arvore errada por causa do cache de build
+# (restore-keys ignora o sha, e "Debug" ordena antes de "Release" no nome do
+# diretorio num projeto multi-config). Duplicar essas ~200 linhas num segundo
+# workflow duplica tambem a chance de reintroduzir o bug. O CI ja e a unica
+# fonte de binarios deste repositorio, e ele ja roda a cada push para main.
+
+on:
+  push:
+    tags: [ 'v[0-9]+.[0-9]+.[0-9]+' ]
+  # A tag v0.3.0 ja existia quando este workflow entrou no repositorio, e um
+  # push de tag nao volta no tempo. O dispatch existe para publicar os
+  # binarios de uma tag ja criada.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag para publicar os binarios (ex: v0.3.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write   # anexar assets na release
+  actions: read     # baixar artefatos de OUTRO run (o de CI deste commit)
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  # Nao cancela: dois jobs de release competindo pelo mesmo par (tag, arquivo)
+  # produzem metade dos assets.
+  cancel-in-progress: false
+
+jobs:
+  # Falhar cedo e barato. Antes de baixar ~25 MB de artefatos, confirmar que a
+  # tag e a versao do codigo concordam, que o commit foi publicado, e que
+  # existe CI verde para ele. Cada uma dessas verificacoes ja falhou de algum
+  # jeito no historico deste repositorio.
+  verify:
+    name: Conferir a tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      sha: ${{ steps.check.outputs.sha }}
+      ci_run_id: ${{ steps.ci.outputs.run_id }}
+    steps:
+      - name: Resolver a tag
+        id: resolve
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.tag }}"
+          fi
+          # ls-remote pela URL, e nao por "origin": este passo roda antes do
+          # checkout, entao nao existe remote configurado para consultar.
+          if ! git ls-remote --exit-code --tags \
+               "${{ github.server_url }}/${{ github.repository }}" \
+               "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "::error::a tag $tag nao existe no remoto"
+            exit 1
+          fi
+          echo "tag resolvida: $tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          # O workflow_dispatch roda a partir da branch padrao; sem ref
+          # explicito a verificacao leria develop em vez do codigo da tag.
+          ref: ${{ steps.resolve.outputs.tag }}
+          # fetch-depth 0 traz main, sem o qual o teste de ancestralidade
+          # abaixo nao tem contra o que comparar.
+          fetch-depth: 0
+
+      - name: A tag tem de casar com a versao do codigo e estar em main
+        id: check
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          version=$(python3 - <<'PY'
+          import os, re, sys, pathlib
+
+          text = pathlib.Path("CMakeLists.txt").read_text(encoding="utf-8")
+          m = re.search(r"project\(PartePlay\s+VERSION\s+([0-9.]+)", text)
+          if not m:
+              sys.exit("::error::nao foi possivel ler project(PartePlay VERSION ...) no CMakeLists.txt")
+          print(m.group(1))
+          PY
+          )
+          echo "versao no CMakeLists: $version"
+
+          if [ "${TAG#v}" != "$version" ]; then
+            echo "::error::a tag $TAG aponta para um codigo que se declara $version"
+            echo " renomeie a tag ou corrija a versao; publicar os dois juntos e a divergencia" >&2
+            echo " entre documento e codigo que este repositorio proibe" >&2
+            exit 1
+          fi
+          echo "tag $TAG casa com a versao $version"
+
+          sha=$(git rev-parse HEAD)
+          if ! git merge-base --is-ancestor "$sha" origin/main; then
+            echo "::error::$sha nao e ancestral de main: a tag aponta para codigo nao publicado"
+            exit 1
+          fi
+          echo "commit $sha esta em main"
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha"        >> "$GITHUB_OUTPUT"
+
+      # O ponto que decide se esta workflow funciona. Artefato de CI expira
+      # (90 dias por padrao) e uma tag pode apontar para um commit cujo run ja
+      # foi para o limbo. Falhar aqui, com a instrucao de rerun, e melhor que
+      # publicar uma release com um terco dos binarios.
+      #
+      # python3 em vez de --jq, pelo mesmo motivo que o job de metadados do
+      # ci.yml usa python3: um literal de string dentro de --jq depende de como
+      # o shell que invocou o gh passou as aspas, e isso muda entre a imagem do
+      # runner e a maquina de quem esta testando. Aqui a expressao nao passa
+      # por shell nenhum.
+      - name: Existe CI verde para este commit?
+        id: ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.check.outputs.sha }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${{ github.repository }}/actions/runs?head_sha=$SHA&per_page=100" > runs.json
+          python3 - <<'PY'
+          import json, os, pathlib, sys
+
+          sha = os.environ["SHA"]
+          runs = json.loads(pathlib.Path("runs.json").read_text(encoding="utf-8"))["workflow_runs"]
+
+          ok = [r for r in runs
+                if r.get("name") == "CI" and r.get("event") == "push"
+                and r.get("conclusion") == "success"]
+          if not ok:
+              sys.exit(f"::error::nenhum run de CI bem-sucedido para {sha}\n"
+                       f" rode: gh workflow run ci.yml --ref {sha}")
+
+          ok.sort(key=lambda r: r["created_at"])
+          run_id = ok[-1]["id"]
+          print(f"run de CI verde: {run_id}")
+          pathlib.Path("run_id.txt").write_text(str(run_id))
+          PY
+          echo "run_id=$(cat run_id.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Os artefatos desse run ainda existem?
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${{ github.repository }}/actions/runs/${{ steps.ci.outputs.run_id }}/artifacts" > artifacts.json
+          python3 - <<'PY'
+          import json, pathlib, sys
+
+          data = json.loads(pathlib.Path("artifacts.json").read_text(encoding="utf-8"))
+          by_name = {a["name"]: a for a in data.get("artifacts", [])}
+
+          for required in ("PartePlay-Windows", "PartePlay-Ubuntu", "PartePlay-macOS-universal"):
+              a = by_name.get(required)
+              if a is None:
+                  sys.exit(f"::error::o artefato {required} nao existe neste run de CI")
+              if a.get("expired"):
+                  sys.exit(f"::error::o artefato {required} expirou. "
+                           "Rode o CI de novo nesse commit para regerar os artefatos.")
+              print(f"  ok: {required}  ({a['size_in_bytes'] / 1048576:.1f} MB)")
+          PY
+
+  # Um job so, sem matrix. Compilar ja foi feito pelo CI; aqui o trabalho e
+  # baixar, renomear, empacotar as ferramentas e calcular os checksums, o que
+  # e barato e nao ganha nada com paralelismo. Alem disso, varios jobs de
+  # matrix anexando na mesma release concorrem pelo mesmo arquivo e deixam a
+  # release com metade dos assets.
+  publish:
+    name: Anexar binarios a release
+    needs: [ verify ]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.verify.outputs.version }}
+      SHA: ${{ needs.verify.outputs.sha }}
+      CI_RUN_ID: ${{ needs.verify.outputs.ci_run_id }}
+      # TAG_RELEASE nao entra aqui de proposito: variavel escrita em
+      # $GITHUB_ENV nao sobrepoe env de job, e um TAG_RELEASE vazio fixado aqui
+      # venceria o valor que o passo de validacao escreve -- o upload iria
+      # para uma tag em branco.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify.outputs.sha }}
+
+      # Baixar de OUTRO run nao e o que actions/download-artifact faz: ele so
+      # enxerga artefatos do run atual. gh run download aceita um id.
+      - name: Baixar os artefatos do CI deste commit
+        run: |
+          set -euo pipefail
+          mkdir -p staging
+          for a in PartePlay-Windows PartePlay-Ubuntu PartePlay-macOS-universal; do
+            gh run download "$CI_RUN_ID" --name "$a" --dir "staging/$a"
+            echo "  baixado: $a"
+          done
+
+      # O nome que o CI usa ("Windows-PartePlay-PartePlay.vst3.zip") descreve a
+      # maquina que compilou, nao o que o usuario baixa. Renomear para
+      # plataforma + arquitetura + versao, que e o que se lee numa pagina de
+      # release.
+      - name: Renomear para o nome de release
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          mover() {
+            local origem="$1" destino="$2"
+            local zip
+            zip=$(find "staging/$origem" -name '*.zip' -type f | head -1)
+            test -n "$zip" || { echo "::error::nenhum zip em staging/$origem"; exit 1; }
+            mv "$zip" "dist/$destino"
+            echo "  $destino  ($(du -h "dist/$destino" | cut -f1))"
+          }
+          mover PartePlay-Windows         "PartePlay-${VERSION}-win-x64.zip"
+          mover PartePlay-Ubuntu          "PartePlay-${VERSION}-linux-x64.zip"
+          mover PartePlay-macOS-universal "PartePlay-${VERSION}-macos-universal.zip"
+          # O CI tambem produz PartePlay-macOS, que e o build na arquitetura do
+          # runner macos-14. O universal ja roda nativo nos dois, entao publicar
+          # os tres faria o usuario decidir entre dois arquivos que cobrem a
+          # mesma maquina. Fica de fora de proposito.
+
+      # O bundle VST3 do Windows tem ~6,5 MB e NAO contem resources/bin: o
+      # locateTools() procura resources/bin ao lado do executavel, ou seja
+      # dentro de Contents/x86_64-win/resources/bin, e o CMake nao copia nada
+      # para la. Sem este zip, quem instala o plugin da release fica com a
+      # pipeline de andamento externa desligada e so com o analisador nativo --
+      # um recurso que o README anuncia. Va separado porque sao ~180 MB, e
+      # ninguem deveria pagar esse download so para ter o plugin.
+      - name: Empacotar as ferramentas externas (opcional)
+        run: |
+          set -euo pipefail
+          out="dist/PartePlay-${VERSION}-tools-win-x64.zip"
+          test -d resources/bin || { echo "::error::resources/bin nao existe no checkout"; exit 1; }
+          (cd resources && zip -r -q "$GITHUB_WORKSPACE/$out" bin)
+          echo "  $(basename "$out")  ($(du -h "$out" | cut -f1))"
+
+      # Um bundle de macOS que nao seja universal passa despercebido ate o
+      # usuario abrir em um processador que ele nao cobre. O CI ja verifica,
+      # mas o binario e conferido de novo aqui, no arquivo que realmente vai
+      # para a pagina de release.
+      - name: O bundle universal e universal mesmo?
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          unzip -q "dist/PartePlay-${VERSION}-macos-universal.zip" -d "$tmp"
+          bin=$(find "$tmp" -path '*Contents/MacOS/*' -type f | head -1)
+          test -n "$bin" || { echo "::error::binario do bundle universal nao encontrado"; exit 1; }
+          archs=$(lipo -archs "$bin")
+          echo "arquiteturas: $archs"
+          case "$archs" in
+            *x86_64*arm64*|*arm64*x86_64*) ;;
+            *) echo "::error::o bundle universal so tem: $archs"; exit 1 ;;
+          esac
+          rm -rf "$tmp"
+
+      # O GitHub ja mostra um digest por asset na propria pagina. O arquivo
+      # .sha256 existe por outro motivo: da para conferir com um comando
+      # (sha256sum -c / Get-FileHash) contra um manifesto publicado, e e o que
+      # install-vst3.ps1 ja faz ao instalar.
+      - name: Calcular os checksums
+        run: |
+          set -euo pipefail
+          cd dist
+          for f in *.zip; do
+            sha256sum "$f" > "$f.sha256"
+            echo "  $f  $(cut -d' ' -f1 "$f.sha256")"
+          done
+          sha256sum *.zip > SHA256SUMS.txt
+
+      # A release precisa existir antes. Criar uma release vazia e pior que
+      # falhar: as notas deste projeto sao escritas a mao, em ingles, e uma
+      # release sem texto e um artefato que ninguem vai querer.
+      - name: A release precisa existir
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.tag || github.ref_name }}"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::nao existe release para a tag $tag"
+            echo " crie com as notas em ingles antes:" >&2
+            echo "   gh release create $tag --title '...' --notes-file notas.md" >&2
+            exit 1
+          fi
+          echo "release $tag existe"
+          echo "TAG_RELEASE=$tag" >> "$GITHUB_ENV"
+
+      - name: Anexar
+        run: |
+          set -euo pipefail
+          # --clobber reenvia um arquivo que ja estava anexado. Sem isso, um
+          # retry depois de uma falha parcial deixa a release com duas versoes
+          # do mesmo zip, e o usuario nao tem como saber qual e a boa.
+          gh release upload "$TAG_RELEASE" \
+            dist/*.zip dist/*.sha256 dist/SHA256SUMS.txt \
+            --clobber --repo "${{ github.repository }}"
+
+      - name: Resumo
+        run: |
+          set -euo pipefail
+          {
+            echo "### Binarios anexados a \`$TAG_RELEASE\`"
+            echo ""
+            echo "| Arquivo | SHA-256 |"
+            echo "| --- | --- |"
+            for f in dist/*.zip; do
+              echo "| \`$(basename "$f")\` | \`$(cut -d' ' -f1 "$f.sha256")\` |"
+            done
+            echo ""
+            echo "Conferir com \`sha256sum -c SHA256SUMS.txt\` (Linux/macOS) ou \`Get-FileHash\` (Windows). Commit \`$SHA\`."
+          } >> "$GITHUB_STEP_SUMMARY"

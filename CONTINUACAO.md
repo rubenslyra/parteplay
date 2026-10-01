@@ -14,9 +14,9 @@
 
 Publicar a primeira versão estável do PartePlay e abrir o repositório para
 colaboração externa com o mínimo de atrito: release baixável, documentação em
-inglês, Pages no ar e `main` protegida. **Cumprido em 01/10/2026**, com uma
-ressalva declarada: a 0.3.0 é distribuída como fonte, sem binário anexado
-(ver "Por que a release não tem binário anexado").
+inglês, Pages no ar e `main` protegida. **Cumprido em 01/10/2026**: tag `v0.3.0`
+assinada, release com notas em inglês, e binários para Windows x86-64, macOS
+universal e Linux x86-64 anexados pela workflow `release.yml`.
 
 ## Estado do repositório em 29/09 (histórico)
 - Branch de trabalho: **`develop`** (criada a partir de `main` em `977411d`).
@@ -482,13 +482,38 @@ Get-FileHash "C:\Program Files\Common Files\VST3\PartePlay.vst3\Contents\x86_64-
 ```
 O hash impresso pelo script tem de bater com o do bundle em `build\msvc-2026`.
 
-### Por que a release não tem binário anexado
-A tag `v0.3.0` é **somente fonte**, e isso está escrito no CHANGELOG, no README e
-nas notas do release. A CI compila e testa as quatro plataformas a cada push, mas
-não existe artefato empacotado da 0.3.0: sem a validação ponta a ponta acima, um
-zip anexado seria um binário que ninguém rodou. A release anterior
-(`v0.2.0-rc.1`) tem pacote; a 0.3.0 não. Se quiser um `.zip` anexado, o passo é
-validar a instalação e depois `gh release upload v0.3.0 <bundle>`.
+### De onde vêm os binários da release
+A workflow `release.yml` **não compila**. Ela baixa os artefatos do run verde de CI do
+**mesmo commit da tag** e os anexa à release, com `.sha256` e um `SHA256SUMS.txt`.
+
+Isso é deliberado, e é a diferença entre um artefato e uma promessa:
+
+- O passo de empacotamento do `ci.yml` já tem histórico de escolher a árvore errada por
+  causa do cache (`restore-keys` ignora o sha, e "Debug" ordena antes de "Release" no nome
+  do diretório num projeto multi-config). Duplicar essas ~200 linhas num segundo workflow
+  duplicaria também a chance de reintroduzir o bug.
+- O binário que o usuário baixa é literalmente o binário que a matriz de quatro
+  plataformas compilou e testou. Não é um "build de release" que alguém rodou à mão.
+- Compilar de novo na hora da release custaria ~20 min por plataforma para produzir o
+  mesmo byte em quatro sistemas.
+
+**O que a release não substitui:** a validação no MuseScore continua em aberto (§_install).
+Um binário que a CI compilou e testeiu não é o mesmo que um binário que alguém carregou no
+host. O que a release entrega é o artefato testado; a validação de uso é o passo
+administrativo que falta.
+
+**As ferramentas externas vão separadas.** O bundle tem ~6,5 MB e não contém `resources/bin`:
+o `locateTools()` procura `resources/bin` ao lado do executável, ou seja dentro de
+`Contents\x86_64-win\resources\bin`, e o CMake não copia nada para lá. Sem o
+`PartePlay-0.3.0-tools-win-x64.zip` (~65 MB), quem instala da release fica só com o
+analisador nativo. O README diz onde descompactar.
+
+**Para anexar um bundle novo a uma tag antiga** (a tag já está publicada e não se move):
+```powershell
+gh workflow run release.yml --ref main -f tag=v0.3.0
+```
+`workflow_dispatch` só aparece se o workflow já estiver na branch padrão — por isso o merge
+dele em `main` precede o disparo.
 
 ## Próximos passos (02/10/2026)
 
