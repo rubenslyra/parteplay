@@ -32,8 +32,43 @@
 //
 // As regras marcadas abaixo como do preset oficial sao as 12 de
 // @commitlint/config-conventional v19, na severidade original.
+//
+// `ignores` nao amolece nenhuma regra: e a lista de commits que a regra nao
+// alcanca. Existe por dois motivos, ambos ja pagos:
+//
+// 1. Commits de merge. O GitHub gera "Merge pull request #N from ..." e essa
+//    mensagem nao tem tipo nem assunto - `type-empty` e `subject-empty` juntos.
+//    Filtrar pelo prefixo e o mecanismo documentado do commitlint para isso, e
+//    nao uma excecao nomeada: o SHA do merge muda a cada merge, o padrao do
+//    titulo nao. Sem este filtro, todo PR contra main reprovaria no proprio
+//    merge que o main recebeu.
+//
+// 2. Dois commits de antes do portão existir. `0c05f85` e `eae4927` sao de
+//    30/09/2026, assinados e ja publicados. Reescrever history assinada num
+//    repositorio publico custa mais do que o padrao vale nesses dois commits -
+//    e a propria politica deste arquivo: o que nao se aceita e recuar o padrao
+//    daqui em diante, nao reescrever o que ja foi assinado.
+//
+// No commitlint v19 `ignores` recebe funcao, e a funcao so ve a mensagem, nao o
+// SHA. Por isso os dois commits antigos sao reconhecidos pelo assunto exato, e
+// nao por hash: e o que a ferramenta permite, e comparar a primeira linha inteira
+// nao deixa passar outro commit por acidente.
+//
+// Qualquer commit novo, em qualquer branch, continua passando pelas 12 regras.
+
+// Assunto exato, sem espaco antes do ponto e sem curingas.
+const subjectIs = subject => message => message.split('\n')[0] === subject;
 
 module.exports = {
+    ignores: [
+        // Commits de merge gerados pelo GitHub.
+        message => /^Merge pull request #\d+ from /.test(message),
+
+        // Antes do portão de Conventional Commits (30/09/2026).
+        subjectIs('Scale the fingerprint PCM correctly and cover it with a regression test'),
+        subjectIs('Record what each open issue has actually delivered')
+    ],
+
     rules: {
         // --- do preset oficial, severidade original ------------------------------
 
