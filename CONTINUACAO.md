@@ -376,8 +376,9 @@ O hash impresso pelo script tem de bater com o do bundle em `build\msvc-2026`.
    137,5) só se reproduz com o arquivo do usuário — sem ele, não mexer em número no
    escuro (agent.md). Com o arquivo, comparar o BPM do SoundStretch, o ×2 padrão e o
    BARS do host.
-3. **Push**: `release/0.2.2` tem o commit de código (`503d8e8`) e o de docs de hoje
-   **só locais**. Enviar para `origin` e acompanhar o **PR #7** (`gh pr checks 7`).
+3. ~~Push~~ **feito em 01/10/2026**: `release/0.2.2` enviado para `origin`
+   (`d0a8d6d..9b1dd14`), com o commit de código (`503d8e8`) e o de docs (`9b1dd14`).
+   Resta acompanhar o **PR #7** (`gh pr checks 7`).
 4. **Propagar**: merge do PR #7 em `develop`; depois `develop` → `main` para liberar
    a 0.2.2.
 5. **Retomar metadados**: atualizar `epic/identidade-do-fonograma` com `develop`
