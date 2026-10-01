@@ -22,18 +22,24 @@ DAW, supports **training speed and bar-based looping**, computes a **local audio
 **Version:** 0.3.0 · **Platform:** Windows 10/11, Ubuntu, macOS (CI-verified build matrix) · **Format:** VST3 · **Stack:** C++17 / JUCE 9.0.2 / CMake
 
 <p align="center">
-  <img src="docs/parteplay-logo.png" width="140" alt="PartePlay">
+  <img src="docs/parteplay-logo.png" width="170" alt="PartePlay">
 </p>
 
 ## Download
 
-**v0.2.0-rc.1 — release candidate.** The plugin is free to download and test now, but it is still in
-development: expect rough edges, and please [open an issue](https://github.com/rubenslyra/parteplay/issues/new/choose)
-if something breaks. The stable release follows the RC once the feedback settles.
+**0.3.0 is published as source.** The `develop`/`main` tree and the `v0.3.0` tag carry the current
+code; the per-platform binaries are built and tested by CI on every push, and a packaged build for
+each platform is not attached to the tag yet.
+
+The last **packaged** build is the **v0.2.0-rc.1 release candidate** — still the download below.
+It is older than this tree: it does not have the external tempo pipeline, the leading-silence trim
+or the MIDI time-map export.
 
 **[⬇ Download PartePlay VST3 — v0.2.0-rc.1](https://github.com/rubenslyra/parteplay/releases/tag/v0.2.0-rc.1)**
 
-AGPL-3.0 · free and open-source · VST3 for Windows, Linux and macOS. The plugin is unsigned, so your
+To build 0.3.0 yourself, follow [Build](#build) — it is four platforms and one C++ toolchain.
+
+AGPL-3.0 — free and open-source — VST3 for Windows, Linux and macOS. The plugin is unsigned, so your
 host will ask you to confirm it the first time you load it — see [Install](#install).
 
 ![PartePlay loaded as an effect in MuseScore 4, with the reference recording analysed](docs/screenshot-v0.3.0-release.png)
@@ -66,7 +72,11 @@ is limited to compensating the tuning reference against the tuning detected in t
 - **Training mode** — speed from 50% to 150% and a bar-based loop aligned to the detected meter,
   keeping playback in sync.
 - **Tempo analysis** — detected BPM, meter (3/4 or 4/4), bar count and tuning, with **MIDI 1.0**
-  time-map export for MuseScore and DAWs.
+  time-map export for MuseScore and DAWs. An optional external pipeline (`ffmpeg` + SoundStretch,
+  bundled under `resources/bin/`) refines the tempo with a different algorithm than the native
+  analyser; the native `TempoAnalyser` is the default and the source of truth.
+- **Leading-silence trim** — the reference track starts at its first non-zero sample instead of
+  carrying the silence a lot of recordings open with, so playback does not sit behind the score.
 - **Offline fingerprint** — computes an AcoustID-compatible fingerprint locally (no cloud, no key
   embedded in the binary). Online lookup is intentionally disabled for now; see
   ["Identification"](#identification) below.
@@ -94,12 +104,18 @@ never from the binary.
 
 ## Build
 
+The default preset is `msvc-2026` (Visual Studio 2026). If you only have the 2022
+Build Tools, use the `msvc` preset instead — it is the same project, a different
+toolchain path.
+
 ```powershell
-cmake --preset msvc
-cmake --build --preset msvc --config Release
+cmake --preset msvc-2026
+cmake --build --preset msvc-2026 --config Release
 ```
 
-Or the script (configure + build in one step):
+Or the script (configure + build in one step, same preset as the installer — mixing
+presets between the two is how a stale plugin ends up in the host without anyone
+noticing):
 
 ```powershell
 .\scripts\build.ps1 -Configuration Release
@@ -108,18 +124,20 @@ Or the script (configure + build in one step):
 Artifact:
 
 ```
-build/msvc/PartePlay_artefacts/Release/VST3/PartePlay.vst3
+build/msvc-2026/PartePlay_artefacts/Release/VST3/PartePlay.vst3
 ```
 
-The presets also cover `ninja`, `linux`, `macos` and `macos-universal` (x86_64 + arm64).
+The configure presets cover `ninja`, `linux`, `macos` and `macos-universal`
+(x86_64 + arm64). The binary bundle itself is platform-independent CMake —
+`ExternalBpm` is the one deliberate exception, see [Known limitations](#known-limitations).
 
 ## Tests
 
 The domain and text layers have an automated suite (no UI, no audio thread) wired into CTest:
 
 ```powershell
-cmake --build --preset msvc --config Release --target PartePlayTests
-ctest --preset msvc
+cmake --build --preset msvc-2026 --config Release --target PartePlayTests
+ctest --preset msvc-2026 -C Release
 ```
 
 **461 checks, 0 failures.** The suite is organized so that musical correctness is enforced by code,
@@ -138,10 +156,12 @@ not by ear:
 
 ## Install
 
-The install scripts are PowerShell, so this section is Windows-only — the build
-itself is cross-platform (see Requirements).
-
 Close MuseScore (or the DAW) before installing — the binary is locked while the plugin is loaded.
+
+### Windows
+
+The install scripts are PowerShell, so the automated path is Windows-only. The bundle itself is
+built and tested on all four CI targets.
 
 ```powershell
 .\scripts\install-vst3.ps1
@@ -156,6 +176,28 @@ The MuseScore notation template is installed separately:
 ```powershell
 .\scripts\install-musescore-template.ps1
 ```
+
+### Linux and macOS
+
+There is no installer script yet — copy the bundle into the VST3 folder of the user. Copy the
+`.vst3` **directory**, not the files inside it; a bundle with loose files at the root is not a
+bundle and hosts will ignore it.
+
+| Platform | Destination |
+| --- | --- |
+| Linux | `~/.vst3/PartePlay.vst3` |
+| macOS (universal) | `~/Library/Audio/Plug-Ins/VST3/PartePlay.vst3` |
+
+```bash
+# Linux, after building with the `linux` preset
+cp -R build/linux/PartePlay_artefacts/Release/VST3/PartePlay.vst3 ~/.vst3/
+
+# macOS, after building with the `macos` preset (or `macos-universal` for x86_64 + arm64)
+cp -R build/macos/PartePlay_artefacts/Release/VST3/PartePlay.vst3 ~/Library/Audio/Plug-Ins/VST3/
+```
+
+The plugin is **unsigned** on every platform, so the host asks you to confirm it the first time it
+loads the bundle.
 
 ## Usage
 
@@ -238,6 +280,10 @@ Structural decisions worth knowing:
 - The track **does not appear** in MuseScore's instrument list; nothing is injected into the score.
 - Direct transport injection is bounded by the VST3 API (Slave/Master relations) — hence the `.mid`
   time-map export.
+- The bundled `ffmpeg` and `soundstretch` binaries in `resources/bin/` are **Windows builds**. The
+  external tempo pipeline is therefore unavailable on Linux and macOS, where the native
+  `TempoAnalyser` does the work on its own — which is the intended behaviour, not a defect. Tools
+  can also be pointed elsewhere with the `PARTEPLAY_TOOLS_DIR` environment variable.
 - The audio path itself (sync under time-stretch, vocoder) has no automated tests and still relies
   on host validation.
 
