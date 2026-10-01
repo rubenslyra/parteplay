@@ -81,6 +81,29 @@ namespace
                       + ", esperado " + std::to_string (expected) + ")");
     }
 
+    // Igualdade exata de ponto flutuante, para os casos em que exato e a
+    // afirmacao.
+    //
+    // -Wfloat-equal existe porque ponto flutuante nao promete que x == y depois
+    // de uma conta, e nesse caso a Comparacao com tolerancia e a certa - por isso
+    // checkClose acima. Mas ha o outro caso: um parser que devolve 0 quando a
+    // linha nao tem BPM, uma funcao que devolve 0 cents para frequencia invalida.
+    // Aqui 1e-9 NAO e a resposta certa, e uma tolerancia transformaria o teste
+    // num teste mais fraco sem que ninguem perceive. Declarar a exatidao uma vez
+    // e melhor do que espalhar pragma pelo arquivo.
+    bool exactly (double actual, double expected)
+    {
+       #if defined(__GNUC__) || defined(__clang__)
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wfloat-equal"
+       #endif
+        const bool same = (actual == expected);
+       #if defined(__GNUC__) || defined(__clang__)
+        #pragma GCC diagnostic pop
+       #endif
+        return same;
+    }
+
     // Assinatura de mojibake: UTF-8 interpretado como Latin-1 e re-codificado.
     // "Ã§" (C3 A7) vira "ÃƒÂ§" (C3 83 C2 A7) â€” procuramos o par U+00C3 seguido de
     // caractere do suplemento Latin-1, alem do caractere de substituicao U+FFFD.
@@ -144,7 +167,7 @@ namespace
 
         // Cents e uma medida de referencia, nao de altura absoluta.
         checkClose (Tuning::centsBetween (440.0, 440.0), 0.0, 1e-12, "cents de 440 para 440 = 0");
-        check (Tuning::centsBetween (0.0, 440.0) == 0.0, "cents de frequencia invalida = 0");
+        check (exactly (Tuning::centsBetween (0.0, 440.0), 0.0), "cents de frequencia invalida = 0");
 
         // A faixa de referencia Ã© pequena de proposito: e uma correcao de
         // desvio, nao um transpositor. O painel 04 expoe estes limites.
@@ -744,6 +767,14 @@ namespace
     }
 }
 
+// As funcoes de teste vivem em namespace anonimo. clang as apontava com
+// -Wmissing-prototypes porque estavam no escopo global, com ligacao externa e
+// sem prototipo: simbolos de teste exportados de um executavel de teste, que
+// ninguem chama e que ainda assim podem colidir com o nome de qualquer outro
+// simbolo do executavel.
+namespace
+{
+
     // Grava um WAV percussivo de duracao e canais pedidos. O sinal tem ataque a
     // cada 0,5 s porque o detector de onsets do Chromaprint precisa de
     // transiente: um tom senoidal puro e degenerado e pode nao gerar
@@ -885,7 +916,7 @@ namespace
         // consulta ao AcoustID enviar 120 s.
         check (std::abs (result.durationSeconds - 12.0) < 0.05,
                "duracao veio da contagem de amostras, nao da constante do algoritmo");
-        check (result.sourceSampleRate == 44100.0, "taxa nativa preservada no resultado");
+        checkClose (result.sourceSampleRate, 44100.0, 1e-9, "taxa nativa preservada no resultado");
         check (result.sourceChannels == 1, "contagem de canais preservada");
 
         // Determinismo: mesma entrada, mesma saida.
@@ -911,7 +942,7 @@ namespace
 
         check (result.state == Fingerprint::State::ready, "estereo aceito");
         check (isBase64 (result.fingerprint), "estereo produziu fingerprint valido");
-        check (result.sourceSampleRate == 48000.0, "taxa nativa de 48 kHz preservada");
+        checkClose (result.sourceSampleRate, 48000.0, 1e-9, "taxa nativa de 48 kHz preservada");
         check (std::abs (result.durationSeconds - 11.0) < 0.05, "duracao stereo correta");
 
         file.deleteFile();
@@ -1354,18 +1385,25 @@ namespace
         std::printf ("\n[tempo] pipeline externa (ffmpeg + soundstretch)\n");
 
         // Parser: primeiro decimal de qualquer linha que mencione "bpm".
-        check (ExternalBpm::parseBpm ("Detected BPM rate 120.0\n") == 120.0,
-               "parseBpm le a linha classica do soundstretch");
-        check (ExternalBpm::parseBpm ("BPM: 137.5\n") == 137.5,
-               "parseBpm aceita rotulo alternativo");
-        check (ExternalBpm::parseBpm ("nothing here\n") == 0.0,
-               "parseBpm ignora saida sem bpm");
-        check (ExternalBpm::parseBpm ("") == 0.0,
-               "parseBpm de vazio e zero");
+checkClose (ExternalBpm::parseBpm ("Detected BPM rate 120.0\n"), 120.0, 1e-9,
+                   "parseBpm le a linha classica do soundstretch");
+        checkClose (ExternalBpm::parseBpm ("BPM: 137.5\n"), 137.5, 1e-9,
+                   "parseBpm aceita rotulo alternativo");
+        check (exactly (ExternalBpm::parseBpm ("nothing here\n"), 0.0),
+                   "parseBpm ignora saida sem bpm");
+        check (exactly (ExternalBpm::parseBpm (""), 0.0),
+                   "parseBpm de vazio e zero");
 
         // Linha de comando do ffmpeg: mono, 44,1 kHz, le a origem e escreve o WAV.
-        const juce::File source ("C:/tmp/song.mp3");
-        const juce::File wav ("C:/tmp/song.parteplay-bpm.wav");
+        //
+        // O caminho e de mentira e fica de proposito fora de diretorio
+        // publicamente gravavel. O teste so verifica a montagem da linha de
+        // comando - nada e lido nem escrito - mas "C:/tmp" em um teste ensina o
+        // leitor que daquela pasta se pode confiar, e em POSIX /tmp e de todo
+        // mundo. O Sonar marca isso como cpp:S5443, e aqui o alerta tem razao
+        // mesmo sem I/O: a pasta e a mesma que a producao usa.
+        const juce::File source ("/parteplay-testes/song.mp3");
+        const juce::File wav ("/parteplay-testes/song.parteplay-bpm.wav");
         const auto ffmpegArgs = ExternalBpm::buildFfmpegArgs (source, wav);
 
         check (ffmpegArgs.contains ("-ac"), "ffmpeg define canais");
@@ -1521,6 +1559,7 @@ namespace
 
         check (player.getMeasureCount() == 0, "sem audio nao ha compassos");
     }
+}
 
 int main()
 {

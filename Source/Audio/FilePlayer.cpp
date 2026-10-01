@@ -119,10 +119,23 @@ juce::int64 FilePlayer::countLeadingSilence (const juce::AudioBuffer<float>& buf
 
     // Zeros digitais exatos: qualquer amostra nao nula em qualquer canal
     // interrompe a contagem. Nao ha limiar em dB aqui de proposito.
+    //
+    // A comparacao e exata e continua sendo. -Wfloat-equal existe porque ponto
+    // flutuante nao promete igualdade depois de uma conta - aqui nao houve
+    // conta nenhuma entre o valor lido e o zero, e o valor veio do decoder. Trocar
+    // por tolerancia trocaria silencio digital por um piso, que e a decisao
+    // errada. A supressao fica local e escrita, porque e uma excecao e nao a regra.
+   #if defined(__GNUC__) || defined(__clang__)
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wfloat-equal"
+   #endif
     for (int i = 0; i < numSamples; ++i)
         for (int ch = 0; ch < numChannels; ++ch)
             if (buffer.getReadPointer (ch)[i] != 0.0f)
                 return static_cast<juce::int64> (i);
+   #if defined(__GNUC__) || defined(__clang__)
+    #pragma GCC diagnostic pop
+   #endif
 
     return static_cast<juce::int64> (numSamples);
 }

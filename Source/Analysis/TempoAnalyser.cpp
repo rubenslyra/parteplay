@@ -135,8 +135,13 @@ double TempoAnalyser::estimateBpm (double sampleRate, const juce::AudioBuffer<fl
 
     const int coarseSteps = (int) std::lround ((240.0 - 40.0) / 0.5);
 
-    for (double bpm = 40.0; bpm <= 240.0; bpm += 0.5)
+    // Contador inteiro, nao acumulando 0,5 em double. O som acumulativo daria
+    // o mesmo resultado hoje - 0,5 e exato em binario - mas "somar 0,5 mil vezes
+    // e chegar em 240,0" e exatamente o tipo de suposicao que quebra quando
+    // alguem troca o passo por 0,05 ou 0,03. O passo e o indice.
+    for (int step = 0; step <= coarseSteps; ++step)
     {
+        const double bpm = 40.0 + 0.5 * (double) step;
         const double excess = excessAt (bpm);
         if (excess <= 0.0)
             continue;
@@ -149,10 +154,7 @@ double TempoAnalyser::estimateBpm (double sampleRate, const juce::AudioBuffer<fl
         }
 
         if (onProgress)
-        {
-            const int step = (int) std::lround ((bpm - 40.0) / 0.5);
             onProgress (0.05f + 0.65f * (float) step / (float) coarseSteps);
-        }
     }
 
     if (coarseBpm <= 0.0)
@@ -161,8 +163,12 @@ double TempoAnalyser::estimateBpm (double sampleRate, const juce::AudioBuffer<fl
     double bestBpm = coarseBpm;
     double bestWeight = coarseWeight;
 
-    for (double bpm = coarseBpm - 1.0; bpm <= coarseBpm + 1.0; bpm += 0.05)
+    // Mesma razao: 41 passos de 0,05 em torno do pico, contados por indice.
+    const int fineSteps = 40;
+
+    for (int step = 0; step <= fineSteps; ++step)
     {
+        const double bpm = coarseBpm - 1.0 + 0.05 * (double) step;
         const double excess = excessAt (bpm);
         if (excess <= 0.0)
             continue;
@@ -175,7 +181,7 @@ double TempoAnalyser::estimateBpm (double sampleRate, const juce::AudioBuffer<fl
         }
 
         if (onProgress)
-            onProgress (0.70f + 0.28f * (float) ((bpm - (coarseBpm - 1.0)) / 2.0));
+            onProgress (0.70f + 0.28f * (float) step / (float) fineSteps);
     }
 
     jassert (bestBpm >= 40.0 && bestBpm <= 240.0);
@@ -219,8 +225,12 @@ int TempoAnalyser::estimateBeatsPerBar (double sampleRate, const juce::AudioBuff
         // Fase a cada frame. A busca antiga saltava ceil(barFrames/4) - ate ~19
         // frames -, testava so 4 alinhamentos e errava o downbeat verdadeiro, o
         // que fazia um 3/4 nitido cair para 4/4.
-        for (double phase = 0.0; phase < barFrames; phase += 1.0)
+        // A fase e um indice de frame, entao conta em int e converte no uso.
+        const int phaseCount = (int) std::ceil (barFrames);
+
+        for (int phaseStep = 0; phaseStep < phaseCount; ++phaseStep)
         {
+            const double phase = (double) phaseStep;
             std::vector<double> strengths (static_cast<size_t> (beatsPerBar), 0.0);
 
             for (int bar = 0; bar < numBars; ++bar)
