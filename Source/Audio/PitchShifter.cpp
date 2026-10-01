@@ -46,9 +46,11 @@ namespace
     {
         std::vector<float> window (static_cast<size_t> (fftSize));
 
+        // std::cos devolve double; o cast e explicito porque a janela e float por
+        // decisao de representacao, e o que a truncacao faz aqui e irrelevante.
         for (int i = 0; i < fftSize; ++i)
-            window[static_cast<size_t> (i)] =
-                0.5f - 0.5f * std::cos (juce::MathConstants<double>::twoPi * i / (fftSize - 1));
+            window[static_cast<size_t> (i)] = static_cast<float> (
+                0.5 - 0.5 * std::cos (juce::MathConstants<double>::twoPi * i / (fftSize - 1)));
 
         return window;
     }
@@ -153,8 +155,10 @@ namespace
                     prevPhase[static_cast<size_t> (k)] = phase;
                 }
 
-                spectrum[static_cast<size_t> (bin)]     = magnitude * std::cos (phaseAcc[static_cast<size_t> (k)]);
-                spectrum[static_cast<size_t> (bin + 1)] = magnitude * std::sin (phaseAcc[static_cast<size_t> (k)]);
+                // O espectro e float: o produto acima e double por causa de std::cos/std::sin, e
+                // o round para float e o que o buffer ja espera.
+                spectrum[static_cast<size_t> (bin)]     = static_cast<float> (magnitude * std::cos (phaseAcc[static_cast<size_t> (k)]));
+                spectrum[static_cast<size_t> (bin + 1)] = static_cast<float> (magnitude * std::sin (phaseAcc[static_cast<size_t> (k)]));
             }
 
             fft.performRealOnlyInverseTransform (spectrum.data());

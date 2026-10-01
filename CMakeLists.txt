@@ -169,6 +169,33 @@ foreach (dir IN LISTS PARTEPLAY_MODULE_DIRS)
     list(APPEND PARTEPLAY_MODULE_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/Source/${dir}")
 endforeach()
 
+# ------------------------------------------------------------------------------
+# Warning como erro, so nos fontes deste repositorio.
+#
+# Por que: a sessao da 0.2.2 terminou com 9 warnings no build, todos um unico
+# C4244 dentro do Chromaprint, e um deles apontava um bug real - a conversao de
+# PCM do fingerprint perdia escala. O build "passava" com o bug dentro. Sem
+# promociao, a mesma classe de defeito volta em silencio e ninguem ve.
+#
+# Por que nao e exatamente "liga /WX": o nivel de warning ja vem do toolchain
+# (juce::juce_recommended_warning_flags liga /W4 no MSVC e -Wall no GCC/Clang).
+# Esta funcao nao escolhe o nivel, ela promove a erro o que ja era reportado -
+# que e o que /WX faz no MSVC e o equivalente mais honesto nos outros dois.
+#
+# Por que os headers de terceiros ficam SYSTEM: o compilador passa a classificar
+# o que acha por /external:I como externo e nao o submete ao nosso nivel. Os 9
+# C4244 sao do Chromaprint e nao sao nosso para corrigir; silenciar warning de
+# terceiro e o que permite exigir /WX no resto sem produzir ruido que ninguem
+# pode resolver.
+# ------------------------------------------------------------------------------
+function(parteplay_warnings_as_errors target)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4 /WX /utf-8)
+    else()
+        target_compile_options(${target} PRIVATE -Werror)
+    endif()
+endfunction()
+
 juce_add_plugin(PartePlay
     # Derivado do PROJECT_VERSION, nunca escrito a mao: manter o numero escrito
     # aqui alem do project() era a mesma duplicacao que a regra de reconciliacao
@@ -201,16 +228,17 @@ if(WIN32)
     # Garantir que as fontes vao para o target VST3 tambem
     target_sources(PartePlay_VST3 PRIVATE ${PARTEPLAY_SOURCES})
     target_link_libraries(PartePlay_VST3 PRIVATE PartePlay juce::juce_audio_formats juce::juce_dsp chromaprint BinaryData)
-    target_include_directories(PartePlay_VST3 PRIVATE ${PARTEPLAY_MODULE_PATHS} "${CMAKE_CURRENT_BINARY_DIR}/juce_binarydata_BinaryData/JuceLibraryCode" "${CHROMAPRINT_ROOT}/src")
+    target_include_directories(PartePlay_VST3 PRIVATE ${PARTEPLAY_MODULE_PATHS} "${CMAKE_CURRENT_BINARY_DIR}/juce_binarydata_BinaryData/JuceLibraryCode")
+    # SYSTEM: header de terceiro nao e julgado pelo nosso nivel de warning.
+    target_include_directories(PartePlay_VST3 SYSTEM PRIVATE "${CHROMAPRINT_ROOT}/src")
     # A versao mostrada na interface vem daqui, nunca de um literal no .cpp: e a
     # CI que reprova X.Y.Z escrito em Source/, entao a macro e o unico caminho
     # limpo entre o project(...VERSION) e o rodape do editor.
     target_compile_definitions(PartePlay_VST3 PRIVATE CHROMAPRINT_NODLL=1 JUCE_VST3_CAN_REPLACE_VST2=0
                                                 PARTEPLAY_VERSION="${PROJECT_VERSION}")
     target_compile_definitions(PartePlay PRIVATE PARTEPLAY_VERSION="${PROJECT_VERSION}")
-    if(MSVC)
-        target_compile_options(PartePlay_VST3 PRIVATE /utf-8)
-    endif()
+    parteplay_warnings_as_errors(PartePlay_VST3)
+    parteplay_warnings_as_errors(PartePlay)
     
     # Nao mexa em MSVC_LINK_OBJECTS achando que o VST3 nao linka. O CMake
     # escreve <LinkObjects>false</LinkObjects> no .vcxproj e isso parece a causa
@@ -245,8 +273,9 @@ target_include_directories(PartePlay PRIVATE ${PARTEPLAY_MODULE_PATHS} "${CMAKE_
 # O target chromaprint usa include_directories() de diretorio, e nao
 # INTERFACE_INCLUDE_DIRECTORIES, entao vincular a lib nao propaga o header.
 # Usamos src/ (header real) em vez de src/include/ (symlink) para nao
-# depender de suporte a symlink na extracao.
-target_include_directories(PartePlay PRIVATE "${CHROMAPRINT_ROOT}/src")
+# depender de suporte a symlink na extracao. SYSTEM: sao 9 C4244 dentro do
+# Chromaprint, e nenhum deles e nosso para corrigir.
+target_include_directories(PartePlay SYSTEM PRIVATE "${CHROMAPRINT_ROOT}/src")
 
 # Sem isso o header se declara __declspec(dllimport) e o link estatico falha
 # com LNK2001 nos simbolos __imp_chromaprint_*. Ver chromaprint.h.
@@ -254,9 +283,7 @@ target_compile_definitions(PartePlay PRIVATE CHROMAPRINT_NODLL=1)
 
 target_compile_definitions(PartePlay PRIVATE JUCE_VST3_CAN_REPLACE_VST2=0)
 
-if(MSVC)
-    target_compile_options(PartePlay PRIVATE /utf-8)
-endif()
+parteplay_warnings_as_errors(PartePlay)
 
 juce_generate_juce_header(PartePlay)
 
@@ -292,14 +319,12 @@ target_link_libraries(PartePlayTests PRIVATE
     chromaprint
 )
 target_include_directories(PartePlayTests PRIVATE ${PARTEPLAY_MODULE_PATHS})
-target_include_directories(PartePlayTests PRIVATE "${CHROMAPRINT_ROOT}/src")
+target_include_directories(PartePlayTests SYSTEM PRIVATE "${CHROMAPRINT_ROOT}/src")
 target_compile_definitions(PartePlayTests PRIVATE CHROMAPRINT_NODLL=1)
 target_compile_features(PartePlayTests PRIVATE cxx_std_17)
 target_compile_definitions(PartePlayTests PUBLIC JUCE_STANDALONE_APPLICATION=1)
 
-if(MSVC)
-    target_compile_options(PartePlayTests PRIVATE /utf-8)
-endif()
+parteplay_warnings_as_errors(PartePlayTests)
 
 juce_generate_juce_header(PartePlayTests)
 

@@ -159,14 +159,17 @@ void PlayScoreProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     juce::ScopedNoDenormals noDenormals;
     buffer.clear();
 
-    auto playHead = getPlayHead();
-    if (playHead == nullptr)
+    // O nome nao e "playHead" por causa de C4458: juce::AudioProcessor ja tem
+    // um membro chamado playHead, e um local com o mesmo nome esconde qual dos
+    // dois o codigo esta usando.
+    auto hostPlayHead = getPlayHead();
+    if (hostPlayHead == nullptr)
     {
         resetPlaybackState();
         return;
     }
 
-    auto position = playHead->getPosition();
+    auto position = hostPlayHead->getPosition();
     if (! position.hasValue())
     {
         resetPlaybackState();

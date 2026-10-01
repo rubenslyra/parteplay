@@ -531,7 +531,9 @@ namespace
         // um retangulo vazio com uma seta: a JUCE delega ao LookAndFeel o desenho
         // do texto tambem, e o override antigo desenhava fundo, contorno e seta -
         // e nada mais.
-        juce::Font getComboBoxFont (juce::ComboBox& box) override
+        // Sem nome no parametro: e um override cujo corpo nao usa a caixa, e C4100 nao
+        // e um aviso de codigo esquecido, e de nome que sobrou.
+        juce::Font getComboBoxFont (juce::ComboBox&) override
         {
             return Theme::font (Theme::Type::control);
         }
@@ -1906,8 +1908,10 @@ PlayScoreEditor::PlayScoreEditor (PlayScoreProcessor& p)
     setResizable (true, false);
     setResizeLimits (1000, 800, 1600, 1280);
 
-    if (auto* constrainer = getConstrainer())
-        constrainer->setFixedAspectRatio (5.0 / 4.0);
+    // "boundsConstrainer" e nao "constrainer" por causa de C4458: juce::Component
+    // ja tem um membro chamado constrainer.
+    if (auto* boundsConstrainer = getConstrainer())
+        boundsConstrainer->setFixedAspectRatio (5.0 / 4.0);
 
     refreshAllTexts();
     refreshAllState();
@@ -2031,7 +2035,9 @@ void PlayScoreEditor::paint (juce::Graphics& g)
     const auto header = headerArea();
     const int logoSide = 42;
 
-    juce::Rectangle<int> cursor = header;
+    // "headerCursor" e nao "cursor" por causa de C4458: juce::Component ja tem um
+    // membro chamado cursor.
+    juce::Rectangle<int> headerCursor = header;
 
 #if JUCE_TARGET_HAS_BINARY_DATA
     const juce::Image logo = juce::ImageCache::getFromMemory (BinaryData::PartePlayIcon_png,
@@ -2039,10 +2045,10 @@ void PlayScoreEditor::paint (juce::Graphics& g)
 
     if (logo.isValid())
     {
-        const auto logoArea = cursor.removeFromLeft (logoSide).toFloat();
+        const auto logoArea = headerCursor.removeFromLeft (logoSide).toFloat();
         g.drawImageWithin (logo, static_cast<int> (logoArea.getX()), static_cast<int> (logoArea.getY()),
                            logoSide, logoSide, juce::RectanglePlacement::centred, false);
-        cursor.removeFromLeft (12);
+        headerCursor.removeFromLeft (12);
     }
 #endif
 
@@ -2052,7 +2058,7 @@ void PlayScoreEditor::paint (juce::Graphics& g)
                                 + creditsButtonWidth + creditsButtonGap
                                 + badgeWidthState + badgeWidthMode + 20;
 
-    auto textArea = cursor.withWidth (juce::jmax (120, cursor.getWidth() - reservedRight));
+    auto textArea = headerCursor.withWidth (juce::jmax (120, headerCursor.getWidth() - reservedRight));
 
     g.setColour (Theme::foreground);
     g.setFont (Theme::font (Theme::Type::title, true));
@@ -2083,7 +2089,9 @@ void PlayScoreEditor::paint (juce::Graphics& g)
 
     // Rodapé
     const auto footer = footerArea();
-    Theme::paintRule (g, footer.withHeight (1.0f).toFloat().translated (0.0f, -10.0f));
+    // withHeight recebe int: o 1.0f era C4244 e a linha produzia um float de 1
+    // truncado para a mesma coisa.
+    Theme::paintRule (g, footer.withHeight (1).toFloat().translated (0.0f, -10.0f));
 
 // Corpo, e nao caption: o rodape era o texto mais pequeno da tela e foi lido
     // errado ("SOFWARE" em vez de "SOFTWARE") por ser 11px. Legibilidade aqui
