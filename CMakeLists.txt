@@ -2,7 +2,7 @@
 
 # Versao do projeto. Este e o UNICO lugar onde a versao mora: badges, notas de
 # release e o formulario do AcoustID derivam daqui (regra de reconciliacao).
-project(PartePlay VERSION 0.2.2 LANGUAGES C CXX)
+project(PartePlay VERSION 0.3.0 LANGUAGES C CXX)
 
 # Versao da JUCE usada na build. Fato de DEPENDENCIA, e nao derivavel da versao
 # do projeto: a versao do PartePlay nao tem relacao com a 9.0.2 da JUCE. A CI le

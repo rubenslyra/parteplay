@@ -6,18 +6,31 @@ Todas as mudanças relevantes do PartePlay. O formato segue
 
 ## [Não publicado]
 
-Próxima versão: **0.2.2** (o número mora só em
+Próxima versão: **0.3.0** (o número mora só em
 `project(PartePlay VERSION x.y.z)`, no `CMakeLists.txt`).
 
 A 0.2.0 estável nunca foi publicada: o que existe é `v0.2.0-rc.1`, cortada de
-`4113f13`. Esta seção é o conteúdo da 0.2.2.
+`4113f13`. Esta seção é o conteúdo da 0.3.0.
 
-**Por que 0.2.2 e não 0.2.1.** A 0.2.2 é *patch* por decisão de escopo: corrigir
-o que já existia, sem functionality nova. A ficha da canção — ISRC, ano, dados do
-fonograma que passa pelo algoritmo — é funcionalidade e sai como **0.3.0**, na
-branch `epic/identidade-do-fonograma`. Pular a 0.2.0 e a 0.2.1 é deliberado:
-numerar a versão seguinte como patch deixa explícito o que entra e o que não
-entra, e 0.2.2 é o primeiro número que não colide com nada já publicado.
+**Por que 0.3.0 e não 0.2.2.** A linha foi aberta como `0.2.2`, *patch* por escopo:
+corrigir o que já existia, sem funcionalidade nova. Ela deixou de ser patch no
+dia seguinte, por acréscimo do autor, e a regra de SemVer deste projeto não tem
+como acomodar isso sem mentir sobre o número. A regra escrita em
+`CONTRIBUTING.md` é: **tudo que o usuário percebe é minor, só defeito é patch**.
+O que entrou nesta linha é perceptível — a pipeline externa de andamento, o corte
+do silêncio inicial, o BARS seguindo o compasso do host, o botão de fonte do BPM,
+a carga com progresso, e o MIDI exportado passando a gravar mapa de tempo. Nenhuma
+dessas é correção de defeito. Logo a linha é **0.3.0**.
+
+Renumerar antes da tag custou uma linha em `CMakeLists.txt` e o reconciliado nos
+quatro documentos que citam o número. Renumerar depois da tag custaria uma tag
+apagada, um artefato já baixado apontando para código que não existe mais, e um
+CHANGELOG com duas versões concorrentes. A regra existe para tornar essa conta
+obvia antes, não depois.
+
+**A ficha da canção sai como 0.4.0**, na branch `epic/identidade-do-fonograma`.
+ISRC, ISWC e os demais dados do fonograma dependem de discutição com a sociedade
+de direitos e ainda não entraram em nenhuma linha.
 
 ### Adicionado
 
@@ -78,7 +91,7 @@ entra, e 0.2.2 é o primeiro número que não colide com nada já publicado.
   distinguir correção de mudança de formatação, que é o que permite escrever o
   changelog a partir do histórico em vez de da memória.
 - **Política de branches e versão em `CONTRIBUTING.md`** — topologia
-  (`main` / `develop` / `release/0.2.2` / `epic/*` / `task/*`), uma issue e uma
+  (`main` / `develop` / `release/0.3.0` / `epic/*` / `task/*`), uma issue e uma
   branch, as cerimônias SCRUM traduzidas em artefatos do repositório em vez de
   reuniões, e a tabela de SemVer que diz o que cabe em patch e o que é minor. A
   regra que amarra o resto: **a tarefa não está pronta até o repositório estar
