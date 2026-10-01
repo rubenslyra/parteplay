@@ -2,7 +2,7 @@
 
 # Versao do projeto. Este e o UNICO lugar onde a versao mora: badges, notas de
 # release e o formulario do AcoustID derivam daqui (regra de reconciliacao).
-project(PartePlay VERSION 0.2.0 LANGUAGES C CXX)
+project(PartePlay VERSION 0.3.0 LANGUAGES C CXX)
 
 # Versao da JUCE usada na build. Fato de DEPENDENCIA, e nao derivavel da versao
 # do projeto: a versao do PartePlay nao tem relacao com a 9.0.2 da JUCE. A CI le
@@ -124,27 +124,94 @@ unset(KISSFFT_ROOT             CACHE)
 # Fonte unica da verdade da lista de arquivos. Os dois targets gerados pelo
 # juce_add_plugin (PartePlay e PartePlay_VST3) consomem esta mesma lista, para
 # que adicionar um arquivo novo nunca precise ser feito em dois lugares.
-set(PARTEPLAY_SOURCES
-    Source/PluginProcessor.cpp
-    Source/PluginEditor.cpp
-    Source/FilePlayer.cpp
-    Source/FingerprintWorker.cpp
-    Source/MidiMapExporter.cpp
-    Source/PitchShifter.cpp
-    Source/Text.cpp
-    Source/TempoAnalyser.cpp
-    Source/Tuning.cpp
+#
+# Source/ esta organizado por modulo, nao por tipo nem por camada:
+#
+#   Core/      identificadores e matematica pura; nao conhece JUCE nem host
+#   Audio/     o caminho do audio: decodificacao, publicacao, pitch, picos
+#   Analysis/  o que mede o arquivo (fingerprint, andamento, afinacao)
+#   Ui/        apresentacao: i18n e cores
+#   Plugin/    a casca VST3, o que o hospedeiro enxerga
+#   Export/    MIDI para o DAW
+#
+# Waveform.h fica em Audio/ e nao em Ui/ porque e dado derivado do audio (pares
+# min/max) e nao apresentacao: o FilePlayer o produz, o editor o consome.
+#
+# Todos os diretorios acima entram no include path, e por isso nenhum include do
+# codigo mudou quando a arvore foi criada: sao sempre #include "Arquivo.h", sem
+# caminho. O preco e que o preprocessor nao impõe a direcao das dependencias
+# entre modulos; a organizacao documenta, e nao restringe. Fixa-la exigiria
+# alvos de biblioteca por modulo, o que para 14 arquivos seria arquitetura de
+# guarda-chuva a mais do que de codigo.
+set(PARTEPLAY_MODULE_DIRS
+    Core Audio Analysis Ui Plugin Export
 )
 
+set(PARTEPLAY_SOURCES
+    Source/Plugin/PluginProcessor.cpp
+    Source/Plugin/PluginEditor.cpp
+    Source/Audio/FilePlayer.cpp
+    Source/Analysis/FingerprintWorker.cpp
+    Source/Analysis/ExternalBpm.cpp
+    Source/Export/MidiMapExporter.cpp
+    Source/Audio/PitchShifter.cpp
+    Source/Ui/Text.cpp
+    Source/Analysis/TempoAnalyser.cpp
+    Source/Core/Tuning.cpp
+)
+
+# Os mesmos diretorios, mas como caminhos absolutos: target_sources() precisa de
+# caminho relativo ao fonte, target_include_directories() precisa de caminho
+# utilizavel no compilador. Montar os dois da mesma lista e o que impede os dois
+# de divergirem.
+set(PARTEPLAY_MODULE_PATHS)
+foreach (dir IN LISTS PARTEPLAY_MODULE_DIRS)
+    list(APPEND PARTEPLAY_MODULE_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/Source/${dir}")
+endforeach()
+
+# ------------------------------------------------------------------------------
+# Warning como erro, so nos fontes deste repositorio.
+#
+# Por que: a sessao da 0.2.2 terminou com 9 warnings no build, todos um unico
+# C4244 dentro do Chromaprint, e um deles apontava um bug real - a conversao de
+# PCM do fingerprint perdia escala. O build "passava" com o bug dentro. Sem
+# promociao, a mesma classe de defeito volta em silencio e ninguem ve.
+#
+# Por que nao e exatamente "liga /WX": o nivel de warning ja vem do toolchain
+# (juce::juce_recommended_warning_flags liga /W4 no MSVC e -Wall no GCC/Clang).
+# Esta funcao nao escolhe o nivel, ela promove a erro o que ja era reportado -
+# que e o que /WX faz no MSVC e o equivalente mais honesto nos outros dois.
+#
+# Por que os headers de terceiros ficam SYSTEM: o compilador passa a classificar
+# o que acha por /external:I como externo e nao o submete ao nosso nivel. Os 9
+# C4244 sao do Chromaprint e nao sao nosso para corrigir; silenciar warning de
+# terceiro e o que permite exigir /WX no resto sem produzir ruido que ninguem
+# pode resolver.
+# ------------------------------------------------------------------------------
+function(parteplay_warnings_as_errors target)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4 /WX /utf-8)
+    else()
+        target_compile_options(${target} PRIVATE -Werror)
+    endif()
+endfunction()
+
 juce_add_plugin(PartePlay
-    VERSION "0.2.0"
+    # Derivado do PROJECT_VERSION, nunca escrito a mao: manter o numero escrito
+    # aqui alem do project() era a mesma duplicacao que a regra de reconciliacao
+    # proibe, e o numero da release e o do bundle sao coisas que nao podem
+    # divergir em silencio.
+    VERSION ${PROJECT_VERSION}
     COMPANY_NAME "PartePlay"
     PRODUCT_NAME "PartePlay"
     PLUGIN_NAME "PartePlay"
     PLUGIN_MANUFACTURER_CODE "PRPL"
     PLUGIN_CODE "PTPY"
-    DESCRIPTION "Ficha da cancao (ISRC, ano, BPM) + reproducao sincronizada ao transport"
-    FORMATS VST3
+    # Descreve so o que existe. A ficha da cancao (ISRC, ano) nao esta neste
+    # codigo: ate la, anunciar recurso inexistente no bundle e o que faz um
+    # usuario reportar bug em funcao que nunca foi entregue.
+    DESCRIPTION "Reproducao de referencia em sincronia com o transporte, com velocidade de treino, loop por compassos e fingerprint acustico local"
+    FORMATS VST3 Standalone
     VST3_CATEGORIES "Fx|Utilities"
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
@@ -161,11 +228,17 @@ if(WIN32)
     # Garantir que as fontes vao para o target VST3 tambem
     target_sources(PartePlay_VST3 PRIVATE ${PARTEPLAY_SOURCES})
     target_link_libraries(PartePlay_VST3 PRIVATE PartePlay juce::juce_audio_formats juce::juce_dsp chromaprint BinaryData)
-    target_include_directories(PartePlay_VST3 PRIVATE Source "${CMAKE_CURRENT_BINARY_DIR}/juce_binarydata_BinaryData/JuceLibraryCode" "${CHROMAPRINT_ROOT}/src")
-    target_compile_definitions(PartePlay_VST3 PRIVATE CHROMAPRINT_NODLL=1 JUCE_VST3_CAN_REPLACE_VST2=0)
-    if(MSVC)
-        target_compile_options(PartePlay_VST3 PRIVATE /utf-8)
-    endif()
+    target_include_directories(PartePlay_VST3 PRIVATE ${PARTEPLAY_MODULE_PATHS} "${CMAKE_CURRENT_BINARY_DIR}/juce_binarydata_BinaryData/JuceLibraryCode")
+    # SYSTEM: header de terceiro nao e julgado pelo nosso nivel de warning.
+    target_include_directories(PartePlay_VST3 SYSTEM PRIVATE "${CHROMAPRINT_ROOT}/src")
+    # A versao mostrada na interface vem daqui, nunca de um literal no .cpp: e a
+    # CI que reprova X.Y.Z escrito em Source/, entao a macro e o unico caminho
+    # limpo entre o project(...VERSION) e o rodape do editor.
+    target_compile_definitions(PartePlay_VST3 PRIVATE CHROMAPRINT_NODLL=1 JUCE_VST3_CAN_REPLACE_VST2=0
+                                                PARTEPLAY_VERSION="${PROJECT_VERSION}")
+    target_compile_definitions(PartePlay PRIVATE PARTEPLAY_VERSION="${PROJECT_VERSION}")
+    parteplay_warnings_as_errors(PartePlay_VST3)
+    parteplay_warnings_as_errors(PartePlay)
     
     # Nao mexa em MSVC_LINK_OBJECTS achando que o VST3 nao linka. O CMake
     # escreve <LinkObjects>false</LinkObjects> no .vcxproj e isso parece a causa
@@ -179,18 +252,30 @@ endif()
 
 target_sources(PartePlay PRIVATE ${PARTEPLAY_SOURCES})
 
+# O wrapper Standalone se recusa a compilar sem os modulos de dispositivo de audio
+# e de utilitarios (juce_audio_plugin_client_Standalone.cpp tem um #error pedindo
+# os dois). Vinculados SO ao alvo do Standalone, e nao ao codigo compartilhado:
+# o VST3 nao usa AudioDeviceManager, e linkar aqui evita arrastar gui_extra e
+# audio_devices para dentro do bundle .vst3.
+if(TARGET PartePlay_Standalone)
+    target_link_libraries(PartePlay_Standalone PRIVATE
+        juce::juce_audio_devices
+        juce::juce_audio_utils)
+endif()
+
 target_link_libraries(PartePlay PRIVATE juce::juce_audio_formats juce::juce_dsp chromaprint)
 
 juce_add_binary_data(BinaryData SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/PartePlay-Icon.png")
 target_link_libraries(PartePlay PRIVATE BinaryData)
 
-target_include_directories(PartePlay PRIVATE Source "${CMAKE_CURRENT_BINARY_DIR}/juce_binarydata_BinaryData/JuceLibraryCode")
+target_include_directories(PartePlay PRIVATE ${PARTEPLAY_MODULE_PATHS} "${CMAKE_CURRENT_BINARY_DIR}/juce_binarydata_BinaryData/JuceLibraryCode")
 
 # O target chromaprint usa include_directories() de diretorio, e nao
 # INTERFACE_INCLUDE_DIRECTORIES, entao vincular a lib nao propaga o header.
 # Usamos src/ (header real) em vez de src/include/ (symlink) para nao
-# depender de suporte a symlink na extracao.
-target_include_directories(PartePlay PRIVATE "${CHROMAPRINT_ROOT}/src")
+# depender de suporte a symlink na extracao. SYSTEM: sao 9 C4244 dentro do
+# Chromaprint, e nenhum deles e nosso para corrigir.
+target_include_directories(PartePlay SYSTEM PRIVATE "${CHROMAPRINT_ROOT}/src")
 
 # Sem isso o header se declara __declspec(dllimport) e o link estatico falha
 # com LNK2001 nos simbolos __imp_chromaprint_*. Ver chromaprint.h.
@@ -198,9 +283,7 @@ target_compile_definitions(PartePlay PRIVATE CHROMAPRINT_NODLL=1)
 
 target_compile_definitions(PartePlay PRIVATE JUCE_VST3_CAN_REPLACE_VST2=0)
 
-if(MSVC)
-    target_compile_options(PartePlay PRIVATE /utf-8)
-endif()
+parteplay_warnings_as_errors(PartePlay)
 
 juce_generate_juce_header(PartePlay)
 
@@ -215,11 +298,13 @@ juce_add_console_app(PartePlayTests PRODUCT_NAME "PartePlayTests")
 
 target_sources(PartePlayTests PRIVATE
     Tests/DomainTests.cpp
-    Source/FilePlayer.cpp
-    Source/FingerprintWorker.cpp
-    Source/TempoAnalyser.cpp
-    Source/Text.cpp
-    Source/Tuning.cpp
+    Source/Audio/FilePlayer.cpp
+    Source/Analysis/FingerprintWorker.cpp
+    Source/Analysis/ExternalBpm.cpp
+    Source/Analysis/TempoAnalyser.cpp
+    Source/Export/MidiMapExporter.cpp
+    Source/Ui/Text.cpp
+    Source/Core/Tuning.cpp
 )
 
 target_link_libraries(PartePlayTests PRIVATE
@@ -233,15 +318,13 @@ target_link_libraries(PartePlayTests PRIVATE
     juce::juce_events
     chromaprint
 )
-target_include_directories(PartePlayTests PRIVATE Source)
-target_include_directories(PartePlayTests PRIVATE "${CHROMAPRINT_ROOT}/src")
+target_include_directories(PartePlayTests PRIVATE ${PARTEPLAY_MODULE_PATHS})
+target_include_directories(PartePlayTests SYSTEM PRIVATE "${CHROMAPRINT_ROOT}/src")
 target_compile_definitions(PartePlayTests PRIVATE CHROMAPRINT_NODLL=1)
 target_compile_features(PartePlayTests PRIVATE cxx_std_17)
 target_compile_definitions(PartePlayTests PUBLIC JUCE_STANDALONE_APPLICATION=1)
 
-if(MSVC)
-    target_compile_options(PartePlayTests PRIVATE /utf-8)
-endif()
+parteplay_warnings_as_errors(PartePlayTests)
 
 juce_generate_juce_header(PartePlayTests)
 

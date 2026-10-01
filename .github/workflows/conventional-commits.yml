@@ -1,0 +1,75 @@
+name: Conventional Commits
+
+# O formato do commit e regra do projeto, nao preferencia. agent.md 2.11 ja
+# exigia DCO em todo PR; esta workflow acrescenta a segunda metade do contrato:
+# a mensagem tem de dizer o que mudou, e no so o que foi mexido.
+#
+# Cobre develop e os PRs para as duas linhas de integracao. Sem o trigger em
+# develop, um commit so era validado quando chegava a main - tarde demais para
+# barrar o que ja foi aceito.
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cc-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  conventional-commits:
+    name: Conventional Commits
+    runs-on: ubuntu-latest
+
+    steps:
+      # fetch-depth 0 porque o linter precisa do historico inteiro para
+      # percorrer o intervalo. Um clone raso daria "bad revision".
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determinar o intervalo verificado
+        id: range
+        shell: bash
+        run: |
+          base='${{ github.event.pull_request.base.sha || github.event.before }}'
+          head='${{ github.event.pull_request.head.sha || github.sha }}'
+
+          # Num push para uma branch recem-criada, github.event.before vem com 40
+          # zeros. Um rev-list a partir de um sha inexistente falha o passo, e o
+          # sintoma seria "a regra falhou" quando nao falhou nada. Nesse caso o
+          # intervalo e tudo que existe.
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            base=$(git rev-list --max-parents=0 HEAD | tail -1)
+            echo "::notice::push inicial ou base desconhecida; verificando todo o historico"
+          fi
+
+          count=$(git rev-list --count "$base..$head")
+          echo "base=$base"  >> "$GITHUB_OUTPUT"
+          echo "head=$head"  >> "$GITHUB_OUTPUT"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "Commits no intervalo: $count"
+
+      # O repositorio nao tem package.json de proposito: e um projeto C++/CMake
+      # e nao ganha uma toolchain Node por causa de um linter. `npx --yes`
+      # instala o pacote no runner e o cache do npm cobre as execucoes seguintes.
+      - name: Validar as mensagens
+        run: |
+          npx --yes @commitlint/cli@19 \
+            --config commitlint.config.js \
+            --from "${{ steps.range.outputs.base }}" \
+            --to   "${{ steps.range.outputs.head }}" \
+            --verbose
+
+      # A regra acima aceita mensagens antigas que nao seguiam o formato, porque
+      # o intervalo nunca as inclui. Nao e problema: reescrever historia assinada
+      # de um repositorio publico custa mais do que o padrao vale nos commits que
+      # ainda nao existem. O que nao se aceita e recuar o padrao daqui em diante.
+      - name: Mostrar a lista do que foi verificado
+        if: failure()
+        run: git log --format='%h %s' "${{ steps.range.outputs.base }}..${{ steps.range.outputs.head }}"

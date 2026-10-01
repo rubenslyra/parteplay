@@ -12,10 +12,18 @@
     {
       "name": "msvc",
       "inherits": "base",
-      "displayName": "Visual Studio 2022 (MSVC) x64",
+      "displayName": "Visual Studio 2022 (MSVC) x64 - toolchain da CI",
       "generator": "Visual Studio 17 2022",
       "architecture": "x64",
       "binaryDir": "${sourceDir}/build/msvc"
+    },
+    {
+      "name": "msvc-2026",
+      "inherits": "base",
+      "displayName": "Visual Studio 2026 Enterprise (MSVC) x64 - padrao local",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/msvc-2026"
     },
     {
       "name": "ninja",
@@ -51,6 +59,7 @@
   ],
   "buildPresets": [
     { "name": "msvc", "configurePreset": "msvc" },
+    { "name": "msvc-2026", "configurePreset": "msvc-2026" },
     { "name": "ninja", "configurePreset": "ninja" },
     { "name": "linux", "configurePreset": "linux" },
     { "name": "macos", "configurePreset": "macos" },
@@ -60,6 +69,12 @@
     {
       "name": "msvc",
       "configurePreset": "msvc",
+      "configuration": "Release",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "msvc-2026",
+      "configurePreset": "msvc-2026",
       "configuration": "Release",
       "output": { "outputOnFailure": true }
     },

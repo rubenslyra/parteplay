@@ -19,14 +19,18 @@
 #include <cstdio>
 #include <cstring>
 #include <limits>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
 
 #include <chromaprint.h>
 
+#include "ExternalBpm.h"
 #include "FilePlayer.h"
 #include "FingerprintWorker.h"
+#include "MidiMapExporter.h"
+#include "TempoAnalyser.h"
 #include "Text.h"
 #include "Tuning.h"
 
@@ -75,6 +79,29 @@ namespace
         const bool ok = std::abs (actual - expected) <= tolerance;
         check (ok, what + " (obtido " + std::to_string (actual)
                       + ", esperado " + std::to_string (expected) + ")");
+    }
+
+    // Igualdade exata de ponto flutuante, para os casos em que exato e a
+    // afirmacao.
+    //
+    // -Wfloat-equal existe porque ponto flutuante nao promete que x == y depois
+    // de uma conta, e nesse caso a Comparacao com tolerancia e a certa - por isso
+    // checkClose acima. Mas ha o outro caso: um parser que devolve 0 quando a
+    // linha nao tem BPM, uma funcao que devolve 0 cents para frequencia invalida.
+    // Aqui 1e-9 NAO e a resposta certa, e uma tolerancia transformaria o teste
+    // num teste mais fraco sem que ninguem perceive. Declarar a exatidao uma vez
+    // e melhor do que espalhar pragma pelo arquivo.
+    bool exactly (double actual, double expected)
+    {
+       #if defined(__GNUC__) || defined(__clang__)
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wfloat-equal"
+       #endif
+        const bool same = (actual == expected);
+       #if defined(__GNUC__) || defined(__clang__)
+        #pragma GCC diagnostic pop
+       #endif
+        return same;
     }
 
     // Assinatura de mojibake: UTF-8 interpretado como Latin-1 e re-codificado.
@@ -140,7 +167,7 @@ namespace
 
         // Cents e uma medida de referencia, nao de altura absoluta.
         checkClose (Tuning::centsBetween (440.0, 440.0), 0.0, 1e-12, "cents de 440 para 440 = 0");
-        check (Tuning::centsBetween (0.0, 440.0) == 0.0, "cents de frequencia invalida = 0");
+        check (exactly (Tuning::centsBetween (0.0, 440.0), 0.0), "cents de frequencia invalida = 0");
 
         // A faixa de referencia Ã© pequena de proposito: e uma correcao de
         // desvio, nao um transpositor. O painel 04 expoe estes limites.
@@ -279,7 +306,18 @@ namespace
             Text::from ("Carregue um arquivo de \xC3\xA1udio para ler a ficha."),
             // "\x" do C++ consome todos os digitos hex seguintes, e 'd' e hex:
             // "conte\xBAdo" viraria 0xBAD. A string precisa ser partida.
-            Text::from ("Campos sem valor n\xC3\xA3o constam no arquivo. A impress\xC3\xA3o digital \xC3\xA9 calculada localmente; cruz\xC3\xA1-la com o AcoustID exige rede e ainda n\xC3\xA3o est\xC3\xA1 habilitado.")
+            Text::from ("Campos sem valor n\xC3\xA3o constam no arquivo. A impress\xC3\xA3o digital \xC3\xA9 calculada localmente; cruz\xC3\xA1-la com o AcoustID exige rede e ainda n\xC3\xA3o est\xC3\xA1 habilitado."),
+            Text::from ("Carregando o \xC3\xA1udio"),
+            Text::from ("Preparando o carregamento"),
+            Text::from ("Lendo o \xC3\xA1udio"),
+            Text::from ("Desenhando a forma de onda"),
+            Text::from ("Estimando o andamento"),
+            Text::from ("Estimando a afina\xC3\xA7\xC3\xA3o"),
+            Text::from ("Publicando o resultado"),
+            Text::from ("Fonte: padr\xC3\xA3o (\xC3\x97" "2)"),
+            Text::from ("Fonte: real (SoundStretch)"),
+            Text::from ("\xC3\x81udio ajustado"),
+            Text::from (" de sil\xC3\xAAncio inicial removido para alinhar ao in\xC3\xAD" "cio do editor.")
         };
 
         // Chaves que TEM de diferir entre pt-BR e en/es. Nao da para exigir
@@ -729,6 +767,14 @@ namespace
     }
 }
 
+// As funcoes de teste vivem em namespace anonimo. clang as apontava com
+// -Wmissing-prototypes porque estavam no escopo global, com ligacao externa e
+// sem prototipo: simbolos de teste exportados de um executavel de teste, que
+// ninguem chama e que ainda assim podem colidir com o nome de qualquer outro
+// simbolo do executavel.
+namespace
+{
+
     // Grava um WAV percussivo de duracao e canais pedidos. O sinal tem ataque a
     // cada 0,5 s porque o detector de onsets do Chromaprint precisa de
     // transiente: um tom senoidal puro e degenerado e pode nao gerar
@@ -780,6 +826,70 @@ namespace
         return file;
     }
 
+    // Regressao do bug de `(int16_t) x * 32767.0f`.
+    //
+    // Este teste existe porque a suite inteira passava com o bug instalado. Os
+    // testes de fingerprint so afirmavam que o resultado era base64 valido, e um
+    // PCM de tres niveis produz base64 valido. Aqui a invariante e quantitativa:
+    // uma rampa de -1 a 1 tem de produzir muitos niveis distintos, e um valor
+    // moderado tem de sobreviver inteiro.
+    void testFingerprintPcmConversion()
+    {
+        std::printf ("\n[fingerprint] conversao para PCM int16");
+
+        // Full scale exato nas duas pontas.
+        check (Fingerprint::toPcm16 (1.0f) == 32767, "+1.0 satura em 32767");
+        check (Fingerprint::toPcm16 (-1.0f) == -32767, "-1.0 satura em -32767");
+        check (Fingerprint::toPcm16 (0.0f) == 0, "0.0 vira 0");
+
+        // Entrada fora de faixa e limitada, nao envolve. A soma dos canais num
+        // arquivo multicanal passa de 1.0 com facilidade; sem limitar, o
+        // produto estouraria o int16 e daria de -32768 (o wrap e silencioso).
+        check (Fingerprint::toPcm16 (2.5f) == 32767, "entrada acima de 1.0 e limitada");
+        check (Fingerprint::toPcm16 (-3.0f) == -32767, "entrada abaixo de -1.0 e limitada");
+        check (Fingerprint::toPcm16 (1.0e6f) == 32767, "entrada enorme nao da overflow");
+        check (Fingerprint::toPcm16 (-1.0e6f) == -32767, "entrada enorme negativa nao da overflow");
+
+        // A regressao central: 0.37 nao pode virar 0. Com o cast no meio da
+        // expressao, o valor era truncado para int16 ANTES de escalar, e 0.37
+        // virava 0 - o sinal sumia.
+        const auto moderate = Fingerprint::toPcm16 (0.37f);
+        check (moderate != 0, "valor moderado nao colapsa para zero");
+        check (std::abs ((double) moderate - 0.37 * Fingerprint::pcm16FullScale) <= 2.0,
+               "valor moderado preserva a escala (0.37 -> perto de 12124)");
+
+        // Proporcionalidade: metade da amplitude e metade da escala.
+        check (Fingerprint::toPcm16 (0.5f) == 16383, "0.5 satura em 16383 (truncamento para zero)");
+
+        // A invariante estrutural: uma rampa completa tem de produzir muitos
+        // niveis distintos. A versao com o bug produzia exatamente tres
+        // (-32767, 0, +32767), entao qualquer limiar acima de 3 a reprova.
+        std::set<int16_t> levels;
+        constexpr int rampPoints = 1001;
+
+        for (int i = 0; i < rampPoints; ++i)
+        {
+            const auto value = -1.0f + 2.0f * (float) i / (float) (rampPoints - 1);
+            levels.insert (Fingerprint::toPcm16 (value));
+        }
+
+        check (levels.size() > (size_t) (rampPoints / 2),
+               "rampa de -1 a 1 preserva resolucao (nao colapsa para poucos niveis)");
+
+        // Monotonicidade: mais amplitude, mais valor. Um sinal invertido aqui
+        // nao acusaria erro em nenhum dos testes acima.
+        bool monotonic = true;
+
+        for (int i = 1; i < rampPoints && monotonic; ++i)
+        {
+            const auto previous = Fingerprint::toPcm16 (-1.0f + 2.0f * (float) (i - 1) / (float) (rampPoints - 1));
+            const auto current  = Fingerprint::toPcm16 (-1.0f + 2.0f * (float) i / (float) (rampPoints - 1));
+            monotonic = current >= previous;
+        }
+
+        check (monotonic, "conversao e monotonica (sinal nao invertido)");
+    }
+
     void testFingerprintCompute()
     {
         std::printf ("\n[fingerprint] calculo offline");
@@ -806,7 +916,7 @@ namespace
         // consulta ao AcoustID enviar 120 s.
         check (std::abs (result.durationSeconds - 12.0) < 0.05,
                "duracao veio da contagem de amostras, nao da constante do algoritmo");
-        check (result.sourceSampleRate == 44100.0, "taxa nativa preservada no resultado");
+        checkClose (result.sourceSampleRate, 44100.0, 1e-9, "taxa nativa preservada no resultado");
         check (result.sourceChannels == 1, "contagem de canais preservada");
 
         // Determinismo: mesma entrada, mesma saida.
@@ -832,7 +942,7 @@ namespace
 
         check (result.state == Fingerprint::State::ready, "estereo aceito");
         check (isBase64 (result.fingerprint), "estereo produziu fingerprint valido");
-        check (result.sourceSampleRate == 48000.0, "taxa nativa de 48 kHz preservada");
+        checkClose (result.sourceSampleRate, 48000.0, 1e-9, "taxa nativa de 48 kHz preservada");
         check (std::abs (result.durationSeconds - 11.0) < 0.05, "duracao stereo correta");
 
         file.deleteFile();
@@ -1182,12 +1292,290 @@ namespace
         Text::setCulture (Text::Culture::PortugueseBR);
     }
 
+    // Sinal sintetico de metronomo: impulsos curtos e decrescentes nas batidas,
+    // com o tempo forte (downbeat) mais alto. E o unico jeito de travar o
+    // analisador sem depender de um arquivo de audio real e sem o ouvido.
+    juce::AudioBuffer<float> makeClickTrack (double sampleRate, double bpm, int beatsPerBar,
+                                             int bars, float offbeatPeak)
+    {
+        const double secondsPerBeat = 60.0 / bpm;
+        const int totalSamples = (int) std::ceil (bars * beatsPerBar * secondsPerBeat * sampleRate);
+        const int clickSamples = (int) std::round (sampleRate * 0.02);
+
+        juce::AudioBuffer<float> buffer (1, juce::jmax (1, totalSamples));
+        buffer.clear();
+
+        auto* data = buffer.getWritePointer (0);
+        const int totalBeats = bars * beatsPerBar;
+
+        for (int beat = 0; beat < totalBeats; ++beat)
+        {
+            const int start = (int) std::lround ((double) beat * secondsPerBeat * sampleRate);
+            const bool downbeat = (beat % beatsPerBar) == 0;
+            const float peak = downbeat ? 1.0f : offbeatPeak;
+
+            for (int i = 0; i < clickSamples && start + i < buffer.getNumSamples(); ++i)
+            {
+                const float envelope = std::exp (-4.0f * (float) i / (float) clickSamples);
+                data[start + i] += peak * envelope
+                                   * std::sin (juce::MathConstants<float>::twoPi
+                                               * 1000.0f * (float) i / (float) sampleRate);
+            }
+        }
+
+        return buffer;
+    }
+
+    void testTempoAnalysis()
+    {
+        std::printf ("\n[tempo] estimativa de andamento\n");
+
+        constexpr double sr = 44100.0;
+
+        // 103 BPM em 3/4 (valsa): o caso relatado. O analisador antigo devolvia
+        // 69,0 - que e 103,5 * 2/3 -, a ambiguidade 3:2 que este teste veda.
+        const auto waltz = makeClickTrack (sr, 103.0, 3, 40, 0.5f);
+        checkClose (TempoAnalyser::estimateBpm (sr, waltz), 103.0, 2.0,
+                    "valsa a 103 BPM nao cai para 69");
+
+        // 120 BPM em 4/4: a referencia do prior de tactus.
+        const auto march = makeClickTrack (sr, 120.0, 4, 40, 0.5f);
+        checkClose (TempoAnalyser::estimateBpm (sr, march), 120.0, 2.0,
+                    "marcha a 120 BPM");
+
+        // 90 BPM em 4/4: abaixo do prior, mas ainda dentro da faixa.
+        const auto slow = makeClickTrack (sr, 90.0, 4, 40, 0.5f);
+        checkClose (TempoAnalyser::estimateBpm (sr, slow), 90.0, 2.0,
+                    "andamento lento a 90 BPM");
+
+        // Assinatura: 3/4 como ternario, 4/4 como quaternario.
+        check (TempoAnalyser::estimateBeatsPerBar (sr, waltz, 103.0) == 3,
+               "3/4 reconhecido como tres tempos por compasso");
+        check (TempoAnalyser::estimateBeatsPerBar (sr, march, 120.0) == 4,
+               "4/4 reconhecido como quatro tempos por compasso");
+    }
+
+    void testTempoProgress()
+    {
+        std::printf ("\n[tempo] progresso da carga\n");
+
+        constexpr double sr = 44100.0;
+        const auto track = makeClickTrack (sr, 120.0, 4, 40, 0.5f);
+
+        float last = -1.0f;
+        bool monotonic = true;
+        int calls = 0;
+
+        TempoAnalyser::estimateBpm (sr, track, [&] (float p)
+        {
+            if (p + 1.0e-4f < last)
+                monotonic = false;
+
+            last = p;
+            ++calls;
+        });
+
+        check (calls > 0, "progresso reporta ao menos uma vez");
+        check (monotonic, "progresso nunca retrocede");
+        check (last >= 0.999f, "progresso termina em 1");
+    }
+
+    void testExternalBpm()
+    {
+        std::printf ("\n[tempo] pipeline externa (ffmpeg + soundstretch)\n");
+
+        // Parser: primeiro decimal de qualquer linha que mencione "bpm".
+checkClose (ExternalBpm::parseBpm ("Detected BPM rate 120.0\n"), 120.0, 1e-9,
+                   "parseBpm le a linha classica do soundstretch");
+        checkClose (ExternalBpm::parseBpm ("BPM: 137.5\n"), 137.5, 1e-9,
+                   "parseBpm aceita rotulo alternativo");
+        check (exactly (ExternalBpm::parseBpm ("nothing here\n"), 0.0),
+                   "parseBpm ignora saida sem bpm");
+        check (exactly (ExternalBpm::parseBpm (""), 0.0),
+                   "parseBpm de vazio e zero");
+
+        // Linha de comando do ffmpeg: mono, 44,1 kHz, le a origem e escreve o WAV.
+        //
+        // O caminho e de mentira e fica de proposito fora de diretorio
+        // publicamente gravavel. O teste so verifica a montagem da linha de
+        // comando - nada e lido nem escrito - mas "C:/tmp" em um teste ensina o
+        // leitor que daquela pasta se pode confiar, e em POSIX /tmp e de todo
+        // mundo. O Sonar marca isso como cpp:S5443, e aqui o alerta tem razao
+        // mesmo sem I/O: a pasta e a mesma que a producao usa.
+        const juce::File source ("/parteplay-testes/song.mp3");
+        const juce::File wav ("/parteplay-testes/song.parteplay-bpm.wav");
+        const auto ffmpegArgs = ExternalBpm::buildFfmpegArgs (source, wav);
+
+        check (ffmpegArgs.contains ("-ac"), "ffmpeg define canais");
+        check (ffmpegArgs.contains ("1"), "ffmpeg converte para mono");
+        check (ffmpegArgs.contains ("-ar"), "ffmpeg define taxa");
+        check (ffmpegArgs.contains ("44100"), "ffmpeg usa 44,1 kHz");
+        check (ffmpegArgs.contains (source.getFullPathName()), "ffmpeg le a origem");
+        check (ffmpegArgs.contains (wav.getFullPathName()), "ffmpeg escreve o WAV");
+
+        const auto soundStretchArgs = ExternalBpm::buildSoundStretchArgs (wav);
+        check (soundStretchArgs.contains (wav.getFullPathName()), "soundstretch le o WAV");
+        check (soundStretchArgs.contains ("-bpm"), "soundstretch pede o BPM");
+
+        // O WAV temporario deriva do nome da origem e tem sufixo fixo.
+        check (ExternalBpm::temporaryWavFor (source).getFileName() == "song.parteplay-bpm.wav",
+               "WAV temporario derivado do nome da origem");
+
+        // Nos testes a pipeline fica desligada, para o resultado nao depender de
+        // haver ffmpeg no PATH da maquina que roda o CI.
+        check (! ExternalBpm::isEnabled(), "pipeline externa desligada nos testes");
+    }
+
+    void testMidiTempoMap()
+    {
+        std::printf ("\n[midi] mapa de tempo (SMF formato 0)\n");
+
+        const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                              .getChildFile ("parteplay-tempo-map-test.mid");
+        file.deleteFile();
+
+        const double bpm = 103.0;
+        const int beatsPerBar = 3;
+
+        check (MidiMapExporter::writeTempoMap (file, bpm, beatsPerBar),
+               "escreve o mapa de tempo em arquivo");
+
+        juce::MemoryBlock raw;
+        check (file.loadFileAsData (raw), "le o arquivo de volta");
+
+        const auto* bytes = static_cast<const unsigned char*> (raw.getData());
+        const size_t size = raw.getSize();
+
+        auto be32 = [bytes] (size_t p) -> unsigned
+        {
+            return ((unsigned) bytes[p] << 24) | ((unsigned) bytes[p + 1] << 16)
+                 | ((unsigned) bytes[p + 2] << 8) | (unsigned) bytes[p + 3];
+        };
+        auto be16 = [bytes] (size_t p) -> unsigned
+        {
+            return ((unsigned) bytes[p] << 8) | (unsigned) bytes[p + 1];
+        };
+
+        check (size > 14, "arquivo com cabecalho e trilha");
+        check (bytes[0] == 'M' && bytes[1] == 'T'
+                   && bytes[2] == 'h' && bytes[3] == 'd', "cabecalho MThd");
+        check (be32 (4) == 6,           "tamanho do cabecalho = 6");
+        check (be16 (8) == 0,           "formato 0");
+        check (be16 (10) == 1,          "uma trilha");
+        check (be16 (12) == 480,        "PPQ 480");
+        check (be32 (14) == 0x4D54726B, "trilha MTrk");
+
+        const int expectedMicros = (int) std::lround (60000000.0 / bpm);
+        bool tempoFound = false;
+        for (size_t i = 14; i + 6 <= size; ++i)
+        {
+            if (bytes[i] == 0xFF && bytes[i + 1] == 0x51 && bytes[i + 2] == 0x03)
+            {
+                const int micros = ((int) bytes[i + 3] << 16)
+                                 | ((int) bytes[i + 4] << 8) | (int) bytes[i + 5];
+                tempoFound = (micros == expectedMicros);
+                break;
+            }
+        }
+        check (tempoFound, "meta de tempo = 60000000 / bpm");
+
+        bool sigFound = false;
+        for (size_t i = 14; i + 7 <= size; ++i)
+        {
+            if (bytes[i] == 0xFF && bytes[i + 1] == 0x58 && bytes[i + 2] == 0x04)
+            {
+                sigFound = ((int) bytes[i + 3] == beatsPerBar && (int) bytes[i + 4] == 2);
+                break;
+            }
+        }
+        check (sigFound, "assinatura nn / dd = 2");
+
+        bool endFound = false;
+        for (size_t i = 14; i + 3 <= size; ++i)
+        {
+            if (bytes[i] == 0xFF && bytes[i + 1] == 0x2F && bytes[i + 2] == 0x00)
+            {
+                endFound = true;
+                break;
+            }
+        }
+        check (endFound, "meta de fim de trilha");
+
+        file.deleteFile();
+    }
+
+    void testAudioTrimAndBars()
+    {
+        std::printf ("\n[audio] silencio inicial e compassos\n");
+
+        // Contagem do silencio inicial: zeros digitais exatos, em qualquer canal.
+        {
+            juce::AudioBuffer<float> buffer (2, 8);
+            buffer.clear();
+            buffer.setSample (0, 4, 0.5f);
+            buffer.setSample (1, 5, -0.25f);
+
+            check (FilePlayer::countLeadingSilence (buffer) == 4,
+                   "silencio inicial conta ate o primeiro sample nao nulo (algum canal)");
+
+            buffer.setSample (0, 0, 0.001f);
+            check (FilePlayer::countLeadingSilence (buffer) == 0,
+                   "sample nao nulo no inicio zera a contagem");
+
+            juce::AudioBuffer<float> silent (1, 6);
+            silent.clear();
+            check (FilePlayer::countLeadingSilence (silent) == 6,
+                   "buffer todo zero conta o proprio tamanho");
+        }
+
+        // BARS = duracao x bpm / 60 / tempos-por-compasso, arredondado.
+        check (FilePlayer::measureCountFor (8.0, 120.0, 4) == 4,
+               "8 s a 120 BPM em 4/4 = 4 compassos");
+        check (FilePlayer::measureCountFor (8.0, 120.0, 3) == 5,
+               "16 batidas em 3/4 arredondam para 5 compassos");
+        check (FilePlayer::measureCountFor (0.0, 120.0, 4) == 0,
+               "duracao nula nao mede");
+        check (FilePlayer::measureCountFor (8.0, 0.0, 4) == 0,
+               "bpm nulo nao mede");
+        check (FilePlayer::measureCountFor (8.0, 120.0, 0) == 0,
+               "compasso nulo nao mede");
+
+        // Escala do BPM e metrica efetiva: padrao x2, e o host manda quando declara.
+        FilePlayer player;
+        check (juce::approximatelyEqual (player.getBpmScale(), 2.0),
+               "escala padrao do BPM e x2");
+        player.setBpmScale (1.0);
+        check (juce::approximatelyEqual (player.getBpmScale(), 1.0),
+               "escala do BPM pode voltar para o valor real");
+
+        check (player.getBeatsPerBar() == 4,
+               "sem override, o compasso e o estimado do audio (4)");
+        player.setMeterOverride (3);
+        check (player.getBeatsPerBar() == 3,
+               "override do host manda no compasso");
+        player.setMeterOverride (0);
+        check (player.getBeatsPerBar() == 4,
+               "override zero volta ao compasso do audio");
+
+        check (player.getMeasureCount() == 0, "sem audio nao ha compassos");
+    }
+}
+
 int main()
 {
     std::printf ("PartePlay - testes de dominio\n\n");
 
+    // A pipeline externa fica desligada: os testes nao podem depender de haver
+    // ffmpeg/soundstretch no PATH da maquina que roda o CI.
+    ExternalBpm::setEnabled (false);
+
     testTuningRatio();
     testNoteNames();
+    testTempoAnalysis();
+    testTempoProgress();
+    testExternalBpm();
+    testAudioTrimAndBars();
+    testMidiTempoMap();
     testTextEncoding();
     testSongSheetStrings();
     testIdentificationTranslations();
@@ -1196,6 +1584,7 @@ int main()
     testCultures();
     testNumberFormatting();
     testEnglishAndSpanishVariants();
+    testFingerprintPcmConversion();
     testFingerprintCompute();
     testFingerprintStereo();
     testFingerprintRejections();
