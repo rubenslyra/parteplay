@@ -1,20 +1,24 @@
-# Continuação — PartePlay (estado em 2026-09-29, após a queda do disco)
+# Continuação — PartePlay
 
-> ⚠️ **O `D:` (Disco 0, PNY CS900 120GB) falhou durante a build de 29/09** —
-> 202 falhas de escrita na MFT do NTFS, com perda de dados confirmada, e o
-> volume está em `Full Repair Needed`. **Não rodar `chkdsk /f`** antes de copiar
-> o que importa. O dossiê com os logs está em
-> `C:\Users\rlyra\Desktop\PartePlay-SSD-diagnostico-2026-09-29\`.
-> O laudo aponta **cabo / controladora / alimentação** como causa comum
-> (os dois discos falharam na mesma janela), não só a memória flash.
+> **Estado atual: 01/10/2026, fim do dia.** A 0.3.0 está **publicada** — tag
+> `v0.3.0` assinada sobre `d997650`, release no GitHub com notas em inglês,
+> `main` e `develop` reconciliados. Ver [Como retomar](#como-retomar) e
+> [Próximos passos](#próximos-passos-02102026) no fim deste arquivo.
+>
+> Este documento é um **diário de sessão**, escrito de cima para baixo. As seções
+> do meio descrevem o estado como ele estava em 29/09 e valem como registro do
+> que foi feito e por quê — não como descrição de hoje. Os títulos das seções
+> antigas dizem a data a que se referem.
 
 ## Objetivo
 
-Publicar a primeira release candidate do PartePlay e abrir o repositório para
+Publicar a primeira versão estável do PartePlay e abrir o repositório para
 colaboração externa com o mínimo de atrito: release baixável, documentação em
-inglês, Pages no ar e `main` protegida.
+inglês, Pages no ar e `main` protegida. **Cumprido em 01/10/2026**, com uma
+ressalva declarada: a 0.3.0 é distribuída como fonte, sem binário anexado
+(ver "Por que a release não tem binário anexado").
 
-## Estado do repositório
+## Estado do repositório em 29/09 (histórico)
 - Branch de trabalho: **`develop`** (criada a partir de `main` em `977411d`).
 - `main` permanece em `977411d` = `origin/main`, intocada e com a proteção valendo.
 - `develop` tem 1 commit à frente: **`0c05f85`**, assinado, com a correção do PCM
@@ -24,6 +28,14 @@ inglês, Pages no ar e `main` protegida.
 - **`develop` ainda não foi enviada ao GitHub.** Decidir se entra como push direto
   ou via PR — `main` exige aprovação de code owner e o owner não pode aprovar o
   próprio PR, então o caminho é `enforce_admins: false` com merge explícito.
+
+> ⚠️ **O `D:` (Disco 0, PNY CS900 120GB) falhou durante a build de 29/09** —
+> 202 falhas de escrita na MFT do NTFS, com perda de dados confirmada, e o
+> volume está em `Full Repair Needed`. **Não rodar `chkdsk /f`** antes de copiar
+> o que importa. O dossiê com os logs está em
+> `C:\Users\rlyra\Desktop\PartePlay-SSD-diagnostico-2026-09-29\`.
+> O laudo aponta **cabo / controladora / alimentação** como causa comum
+> (os dois discos falharam na mesma janela), não só a memória flash.
 
 ## Release candidate: publicada ✅
 - Tag **`v0.2.0-rc.1`**, marcada como **pre-release** (não draft).
@@ -429,14 +441,32 @@ compilam com o portão de warnings ligado** — antes disso o macOS universal er
 `skipping` porque as outras três quebravam antes.
 
 ## Como retomar
+
 ```powershell
 cd D:\source\DevOUT\parteplay
-gh pr checks 8                       # resultado da matriz de build do PR #8
-git log --oneline origin/develop..release/0.3.0
+gh release view v0.3.0                 # release publicado, notas em inglês
+git log --oneline origin/main -1       # d997650 — o merge que a tag aponta
 ```
-O próximo passo é o merge do PR #8 em `develop`; depois, `develop` → `main` para
-liberar a 0.3.0. A branch `epic/identidade-do-fonograma` precisa ser atualizada
-com `develop` antes de começar o trabalho de metadados.
+
+**A 0.3.0 está publicada.** Ordem do que aconteceu, para não reconstruir:
+
+| O quê | Resultado |
+|---|---|
+| PR #8 `release/0.3.0` → `develop` | merged como `2e23c0c` |
+| PR #9 `develop` → `main` | merged como `5fa3f74` |
+| `commitlint.config.js` | `8300470` — o gate não reconhecia merge commit |
+| CHANGELOG datado | `648cb89` — a seção dizia *Não publicado* |
+| PR #10 `develop` → `main` | merged como `d997650` |
+| Tag `v0.3.0` | anotada e assinada sobre `d997650`; GitHub: `verified=true` |
+
+Os dois PRs para `main` foram mergeados com `--admin`: o ruleset exige uma
+aprovação de code owner e o owner não pode aprovar o próprio PR. Os commits de
+merge foram conferidos pela API (`verified=true`) — `%G?` local devolve `E`
+porque a `allowed_signers` local resolve a chave diferente da que o GitHub
+conhece, e isso nunca afetou o resultado lá.
+
+A branch `epic/identidade-do-fonograma` precisa ser atualizada com `develop`
+antes de começar o trabalho de metadados.
 
 ### Instalação ainda não validada de ponta a ponta
 O `install-vst3.ps1` foi exercitado contra `msvc` e `msvc-2026` e para
@@ -452,21 +482,26 @@ Get-FileHash "C:\Program Files\Common Files\VST3\PartePlay.vst3\Contents\x86_64-
 ```
 O hash impresso pelo script tem de bater com o do bundle em `build\msvc-2026`.
 
+### Por que a release não tem binário anexado
+A tag `v0.3.0` é **somente fonte**, e isso está escrito no CHANGELOG, no README e
+nas notas do release. A CI compila e testa as quatro plataformas a cada push, mas
+não existe artefato empacotado da 0.3.0: sem a validação ponta a ponta acima, um
+zip anexado seria um binário que ninguém rodou. A release anterior
+(`v0.2.0-rc.1`) tem pacote; a 0.3.0 não. Se quiser um `.zip` anexado, o passo é
+validar a instalação e depois `gh release upload v0.3.0 <bundle>`.
+
 ## Próximos passos (02/10/2026)
 
 1. **Validar no MuseScore** (shell elevado, MuseScore fechado): `.\scripts\build.ps1`
    e `.\scripts\install-vst3.ps1 -SkipTests`; conferir o hash do bundle instalado
-   contra `build\msvc-2026`. É o único passo do escopo que não deu para fechar hoje
-   por falta de privilégio.
+   contra `build\msvc-2026`. É o único passo do escopo que não deu para fechar
+   por falta de privilégio — e é o que destrava o binário anexado ao release.
 2. **Sincronia de compassos com áudio real**: o caso relatado (BPM real ~103 contra
    137,5) só se reproduz com o arquivo do usuário — sem ele, não mexer em número no
    escuro (agent.md). Com o arquivo, comparar o BPM do SoundStretch, o ×2 padrão e o
    BARS do host.
-3. ~~Push~~ **feito em 01/10/2026**: `release/0.2.2` enviado para `origin`
-   (`d0a8d6d..9b1dd14`), com o commit de código (`503d8e8`) e o de docs (`9b1dd14`).
-   Substituído pela `release/0.3.0`, enviada em seguida. Acompanhar pelo
-   **PR #8** (`gh pr checks 8`).
-4. **Propagar**: merge do PR #8 em `develop`; depois `develop` → `main` para liberar
-   a 0.3.0.
+3. ~~Push~~ **feito**: `release/0.3.0` enviada, PR #8 merged (`2e23c0c`).
+4. ~~Propagar~~ **feito**: PR #9 merged em `main` (`5fa3f74`), PR #10 merged
+   (`d997650`). Tag `v0.3.0` e release publicados.
 5. **Retomar metadados**: atualizar `epic/identidade-do-fonograma` com `develop`
-   antes do trabalho de ISRC/ano.
+   antes do trabalho de ISRC/ano. A ficha da canção sai como **0.4.0**.
