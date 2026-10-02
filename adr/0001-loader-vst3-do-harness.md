@@ -256,27 +256,33 @@ passar um empacotamento quebrado.
 **Por que uma ação composta.** O script existe em `.github/actions/provar-carga-vst3/`
 e não em três cópias: quatro Plataformas divergem no primeiro ajuste.
 
-**O caminho do executável depende do gerador, não da plataforma.** O preset
-`msvc` é multi-config e produz `PartePlayHarness_artefacts/Release/`; os presets
-`linux`, `macos` e `macos-universal` são Ninja e **não definem
-`CMAKE_BUILD_TYPE`**, então `$<CONFIG>` — que é como o JUCE monta
-`${CMAKE_CURRENT_BINARY_DIR}/${target}_artefacts/$<CONFIG>`
-(`JUCEUtils.cmake:2152`) — expande para vazio e o segmento não existe. O caminho
-está declarado na matriz do workflow, e a ação exige unicidade se ele não bater,
-com falha e lista de candidatos.
+**O caminho do executável depende do preset, não do gerador.** Cada preset
+`configurePresets` tem o seu `binaryDir`, então o caminho do harness é montado
+na matriz do workflow. Todos os quatro produzem o segmento `Release/`, porque
+todos herdam `base`, que define `CMAKE_BUILD_TYPE=Release` — inclusive os Ninja,
+que são single-config. A ação exige unicidade se o caminho não bater, com falha
+e lista de candidatos.
 
-**Dois bugs pré-existentes que a T9 expôs, ambos fora do escopo dela:**
+**Eu errei isso, e o CI provou.** Li `CMakePresets.json` sem seguir a cadeia de
+`inherits`, concluí que os presets Ninja não tinham `CMAKE_BUILD_TYPE` — e escrevi
+um "bug pré-existente" no plano,achei que Ninja ignoraria `--config Release`, e
+construí a matriz sem o segmento `Release/`. Não existe esse bug: `--config` é
+de fato ignorado pelo Ninja, mas `CMAKE_BUILD_TYPE` vem do preset, e o build sai
+otimizado com `NDEBUG` normalmente. Os quatro jobs reprovaram com
+`No such file or directory` no caminho do harness, que é um sintoma que não
+aponta para a premissa errada que o produziu.
 
-1. `cmake --build build/linux --config Release` **ignora** `--config Release`:
-   Ninja é single-config e nenhum preset define `CMAKE_BUILD_TYPE`. As builds de
-   Linux e macOS saem **sem otimização e sem `NDEBUG`**, o que é exatamente o que
-   o aviso de `JuceHeader.h` pede para não acontecer. O job compila Release em
-   letra, e compila outra coisa.
-2. O empacotamento de Linux/macOS usava `find … | head -1`, que é **o bug que já
-   tinha sido corrigido no Windows** (o artefato publicado saía de um build
-   antigo, sem erro visível). Corrigido: caminho exato primeiro, e a varredura
-   como último recurso **exigindo unicidade e falhando com a lista** quando há
-   mais de um candidato. Escolher em silêncio é o que produziu o bug.
+O conserto é somar `/Release` nos quatro caminhos da matriz. O que fica é a
+lição de método: uma afirmação sobre configuração de build que eu não testei,
+escrevi com a confiança de quem leu o arquivo, e que teria—justificado não
+corrigir um bug imaginário.
+
+**O bug pré-existente que T9 encontrou de verdade:** o empacotamento de
+Linux/macOS usava `find … | head -1`, que é o bug que já tinha sido corrigido no
+Windows — o artefato publicado saía de um build antigo, sem erro visível.
+Corrigido: caminho exato primeiro, e a varredura como último recurso **exigindo
+unicidade e falhando com a lista** quando há mais de um candidato. Escolher em
+silêncio é o que produziu o bug.
 
 Verificado em 02/10/2026 no Windows: `Compress-Archive` → `Expand-Archive`
 produz **exatamente 1** `PartePlay.vst3` com 4 arquivos, e o harness carrega esse
@@ -365,11 +371,6 @@ tamanho do plugin em vez de com o número de etapas.
 
 **T10.** A tabela de cobertura do README — o que o harness prova sozinho e o que
 continua dependendo de um host real.
-
-**A correção de `CMAKE_BUILD_TYPE` nos presets Ninja.** É um bug real e grave,
-descrito na seção da T9, mas mudar a configuração de build muda os binários
-publicados. Isso precisa de decisão e de um PR próprios, não de um commit
-dentro de uma epic de teste.
 
 **T9 não é um alvo de CMake.** O backlog manda "reusar o `cmake --install` que já
 existe" e ele não existe: o empacotamento são ~200 linhas em

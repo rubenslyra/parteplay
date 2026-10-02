@@ -102,12 +102,12 @@ runs:
           exit 1
         fi
 
-        # O caminho do executavel vem do chamador porque ele sabe o gerador:
-        # 'msvc' e multi-config e produz PartePlay_artefacts/Release/, enquanto
-        # os presets Ninja nao definem CMAKE_BUILD_TYPE e produzem
-        # PartePlay_artefacts/ sem segmento de config. Se o caminho esperado nao
-        # bater, procura-se e exige-se unicidade - nunca 'o primeiro que
-        # aparecer', que e o que fez o job publicar um build Debug antigo.
+        # O caminho do executavel vem do chamador porque cada preset tem o seu diretorio
+        # de build. Todos produzem `Release/` no caminho, porque todos os presets
+        # herdam `base`, que define CMAKE_BUILD_TYPE=Release - inclusive os Ninja,
+        # que sao single-config. Se o caminho esperado nao bater, procura-se e
+        # exige-se unicidade - nunca 'o primeiro que aparecer', que e o que fez o
+        # job publicar um build Debug antigo.
         harness="$HARNESS"
         if [ ! -f "$harness" ]; then
           echo "::notice::$harness nao existe; procurando o harness no build"

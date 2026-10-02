@@ -87,12 +87,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # `harness` fica na matriz, e nao montado com expressao ternaria na
-          # hora de usar, porque ele depende do GERADOR e nao da plataforma:
-          # msvc e multi-config e produz o segmento de config; os presets Ninja
-          # nao definem CMAKE_BUILD_TYPE, entao $<CONFIG> expande para vazio e o
-          # segmento nao existe. A acao composta ainda exige unicidade se o
-          # caminho esperado nao bater, mas espera-se que ele bata.
+          # O caminho do executavel vem do gerador, e a diferenca entre msvc e os
+        # demais nao e a presenca do segmento de config: todos os quatro presets
+        # herdam `base`, que define CMAKE_BUILD_TYPE=Release, entao todos produzem
+        # `Release/`. O que muda entre eles e o nome do diretorio de build.
+        #
+        # Ja corrigi isso errando: eu tinha lido o preset sem seguir a heranca,
+        # concluido que os Ninja nao tinham CMAKE_BUILD_TYPE, e escrito a matriz
+        # sem o segmento. O CI reprovou em quatro plataformas com um
+        # "No such file or directory" que apontava para o caminho, nao para a
+        # premissa. A acao composta exige unicidade se o caminho esperado nao
+        # bater, mas espera-se que ele bata.
           - name: Windows
             os: windows-2022
             preset: msvc
@@ -102,12 +107,12 @@ jobs:
             os: ubuntu-24.04
             preset: linux
             build_type: Release
-            harness: build/linux/PartePlayHarness_artefacts/PartePlayHarness
+            harness: build/linux/PartePlayHarness_artefacts/Release/PartePlayHarness
           - name: macOS
             os: macos-14
             preset: macos
             build_type: Release
-            harness: build/macos/PartePlayHarness_artefacts/PartePlayHarness
+            harness: build/macos/PartePlayHarness_artefacts/Release/PartePlayHarness
 
     steps:
       - uses: actions/checkout@v4
@@ -246,13 +251,8 @@ jobs:
           # arvores antigas (restore-keys ignora o sha) e, num projeto
           # multi-config, "Debug" ordena antes de "Release" no nome do
           # diretorio, entao o passo empacotava um build de outro commit sem
-          # erro visivel. Aqui a diferenca e que Ninja e single-config e nao
-          # define CMAKE_BUILD_TYPE, entao o segmento de config simplesmente nao
-          # existe - e por isso que os dois caminhos sao testados, nesta ordem.
+          # erro visivel.
           bundle="$root/PartePlay_artefacts/${{ matrix.build_type }}/VST3/PartePlay.vst3"
-          if [ ! -d "$bundle" ]; then
-            bundle="$root/PartePlay_artefacts/VST3/PartePlay.vst3"
-          fi
 
           # Ultimo recurso: procurar. Mas exigir unicidade e falhar com a lista
           # quando ha mais de um candidato, em vez de escolher em silencio.
@@ -339,11 +339,11 @@ jobs:
       - name: Empacotar
         run: |
           set -euo pipefail
-          # Caminho exato antes da varredura. macos-universal e Ninja sem
-          # CMAKE_BUILD_TYPE, entao nao ha segmento de config; a varredura fica
-          # como ultimo recurso e exige unicidade, pelo mesmo motivo do job
-          # Linux/macOS.
-          bundle="build/macos-universal/PartePlay_artefacts/VST3/PartePlay.vst3"
+          # Caminho exato antes da varredura. macos-universal herda `base` como os
+          # outros, entao tem CMAKE_BUILD_TYPE=Release e o segmento existe; a
+          # varredura fica como ultimo recurso e exige unicidade, pelo mesmo
+          # motivo do job Linux/macOS.
+          bundle="build/macos-universal/PartePlay_artefacts/Release/VST3/PartePlay.vst3"
           if [ ! -d "$bundle" ]; then
             mapfile -t cands < <(find build/macos-universal -type d -name 'PartePlay.vst3' -not -path '*/_deps/*')
             if [ "${#cands[@]}" -ne 1 ]; then
@@ -392,4 +392,4 @@ jobs:
         uses: ./.github/actions/provar-carga-vst3
         with:
           zip: macOS-universal-PartePlay-PartePlay.vst3.zip
-          harness: build/macos-universal/PartePlayHarness_artefacts/PartePlayHarness
+          harness: build/macos-universal/PartePlayHarness_artefacts/Release/PartePlayHarness
