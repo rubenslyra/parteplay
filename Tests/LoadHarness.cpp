@@ -13,10 +13,11 @@
       [fail] 03/08 name reason=COD  detalhe
       [done] summary  steps_ok=N failed_at=NONE
 
-    O codigo de saida e o indice da etapa que falhou; 0 quando todas passam.
-    Os prefixos sao literais para que `grep -c '^[ok]'` no CI funcione sem
-    interpretar prosa, e cada modo de falha tem nome proprio para nao
-    colapsar em um "plugin not found" generico.
+    O codigo de saida e o indice da etapa que falhou; 0 quando todas passam, e 99
+    para falha de infraestrutura do harness (excecao inesperada), que nao
+    corresponde a nenhuma etapa. Os prefixos sao literais para que
+    `grep -c '^[ok]'` no CI funcione sem interpretar prosa, e cada modo de falha
+    tem nome proprio para nao colapsar em um "plugin not found" generico.
 
     Ver adr/0001-loader-vst3-do-harness.md.
 */
@@ -27,10 +28,18 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
+#include <vector>
 
 namespace
 {
-    constexpr int totalSteps = 8;
+    constexpr int totalSteps = 9;
+
+    // Falha de infraestrutura do harness, e nao de uma etapa do plugin: nao ha
+    // indice de etapa que corresponda, e 99 nao colide com nenhum passo. Precisa
+    // ser distinguivel de 0, senao um std::exception inesperada vira verde.
+    constexpr int infrastructureFailure = 99;
+
+    constexpr int childTimeoutMs = 120000;
 
     // defined() e nao o valor direto: as macros de plataforma do JUCE nem
     // sempre estao todas visiveis numa TU, e "usada antes de declarada" seria
@@ -80,6 +89,20 @@ namespace
     int stepsOk = 0;
     bool verbose = false;
 
+    // Diretorios temporarios criados pela T7. bail() limpa antes de sair porque
+    // std::exit nao desfaz nada, e sem isso cada execucao que falha no caso
+    // negativo deixa para tras uma copia de ~6 MB do bundle no temp.
+    std::vector<juce::File> tempDirs;
+
+    void cleanupTempDirs()
+    {
+        for (auto& dir : tempDirs)
+            if (dir.exists())
+                dir.deleteRecursively();
+
+        tempDirs.clear();
+    }
+
     void emit (const char* format, ...)
     {
         va_list args;
@@ -101,6 +124,7 @@ namespace
         emit ("[fail] %02d/%02d %s  reason=%s  %s", n, totalSteps, name, reason,
               detail != nullptr ? detail : "");
         emit ("[fail] summary  steps_ok=%d  failed_at=%02d/%02d  reason=%s", stepsOk, n, totalSteps, reason);
+        cleanupTempDirs();
         std::exit (n);
     }
 
@@ -200,6 +224,301 @@ namespace
         emit ("       %s", detail);
         stepOk (n, name);
     }
+
+    //==============================================================================
+    // T7: caso negativo.
+    //
+    // Sem este passo o harness passa porque o bundle esta bom, e nada prova que
+    // ele falharia se o bundle estivesse ruim. Um teste que so passa quando o
+    // alvo esta correto nao distingue "artefato bom" de "harness quebrado", e
+    // nesse caso os dois produzem exatamente o mesmo log verde.
+
+    // O SDK resolve o binario carregavel como Contents/<arch>/<nome-do-bundle>,
+    // entao o alvo da corrupcao e o arquivo cujo nome sem extensao bate com o do
+    // bundle. Um caminho hard-coded por plataforma seria verde no Windows
+    // (Contents/x86_64-win) e quebrado no Linux e no macOS.
+    juce::File findLoadableBinary (const juce::File& bundle)
+    {
+        const auto stem = bundle.getFileNameWithoutExtension();
+        const auto all = bundle.findChildFiles (juce::File::findFiles, true, "*");
+
+        for (const auto& file : all)
+            if (file.getFileNameWithoutExtension() == stem
+                && ! file.getFileExtension().equalsIgnoreCase ("json"))
+                return file;
+
+        return {};
+    }
+
+    struct CopyResult
+    {
+        bool ok = false;
+        const char* failure = nullptr;
+        juce::String detail;
+    };
+
+    // Como corromper o binario. Nao ha "corromper o manifesto" de proposito: ver
+    // o comentario da tabela de variantes, medida em 02/10/2026.
+    enum class Corruption
+    {
+        binaryTruncated,
+        binaryHeaderCorrupted
+    };
+
+    // Copia o bundle e corrompe o binario carregavel, verificando a corrupcao.
+    //
+    // O nome da pasta copiada e preservado porque e ele que o SDK reaproveita ao
+    // montar o caminho do binario (module_win32.cpp:158).
+    //
+    // Toda corrupcao e conferida depois de aplicada. Sem essa checagem, uma
+    // escrita que falhou silenciosamente - arquivo aberto, disco cheio, copia
+    // incompleta - faria o filho rodar contra um bundle intacto, carregar com
+    // sucesso e o passo verde seria mentira.
+    CopyResult makeCorruptedCopy (const juce::File& bundle, Corruption corruption)
+    {
+        CopyResult result;
+
+        const auto tempRoot = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                                  .getChildFile ("parteplay-harness-"
+                                                 + juce::Uuid().toDashedString().substring (0, 8));
+
+        if (! tempRoot.createDirectory())
+        {
+            result.failure = "NEGATIVE_TEMP_CREATE_FAILED";
+            return result;
+        }
+
+        tempDirs.push_back (tempRoot);
+
+        const auto copyRoot = tempRoot.getChildFile (bundle.getFileName());
+
+        if (! bundle.copyDirectoryTo (copyRoot))
+        {
+            result.failure = "NEGATIVE_COPY_FAILED";
+            result.detail = copyRoot.getFullPathName();
+            return result;
+        }
+
+        const auto binary = findLoadableBinary (copyRoot);
+
+        if (! binary.existsAsFile())
+        {
+            result.failure = "NEGATIVE_TARGET_NOT_FOUND";
+            result.detail = "nenhum binario com o mesmo stem do bundle";
+            return result;
+        }
+
+        const auto originalSize = binary.getSize();
+
+        if (originalSize <= 0)
+        {
+            result.failure = "NEGATIVE_TARGET_NOT_FOUND";
+            result.detail = "binario do bundle com tamanho zero";
+            return result;
+        }
+
+        if (corruption == Corruption::binaryTruncated)
+        {
+            // juce::File nao tem truncate(); replaceWithText vazio abre em "wb" e
+            // deixa o arquivo com 0 bytes.
+            if (! binary.replaceWithText (juce::String()) || binary.getSize() != 0)
+            {
+                result.failure = "NEGATIVE_CORRUPTION_FAILED";
+                result.detail = binary.getFullPathName();
+                return result;
+            }
+
+            emit ("       corrompido %s  %lld -> 0 bytes",
+                  binary.getFileName().toStdString().c_str(),
+                  static_cast<long long> (originalSize));
+        }
+        else
+        {
+            // Cabecalho PE/ELF/Mach-O destruido com o tamanho preservado. E o que
+            // separa "o loader achou um arquivo" de "o loader carregou um modulo":
+            // um binario vazio seria recusado por ser vazio, e este e recusado por
+            // ter um cabecalho invalido.
+            constexpr int headerBytes = 4096;
+
+            juce::MemoryBlock data;
+
+            if (! binary.loadFileAsData (data) || data.getSize() != static_cast<size_t> (originalSize))
+            {
+                result.failure = "NEGATIVE_CORRUPTION_FAILED";
+                result.detail = "leitura do binario para corromper cabecalho";
+                return result;
+            }
+
+            auto* bytes = static_cast<uint8_t*> (data.getData());
+            const auto count = static_cast<int> (originalSize) < headerBytes
+                                 ? static_cast<int> (originalSize)
+                                 : headerBytes;
+
+            // Preserva o tamanho e apaga o cabecalho: nenhum byte vira lixo que
+            // dependa de plataforma, e a corrupcao pega MZ, \x7fELF e o Mach-O
+            // universal com o mesmo codigo.
+            for (int i = 0; i < count; ++i)
+                bytes[i] = 0x00;
+
+            if (! binary.replaceWithData (data.getData(), data.getSize()) || binary.getSize() != originalSize)
+            {
+                result.failure = "NEGATIVE_CORRUPTION_FAILED";
+                result.detail = "gravacao do cabecalho corrompido";
+                return result;
+            }
+
+            emit ("       corrompido %s  %lld bytes, cabecalho de %d zerado",
+                  binary.getFileName().toStdString().c_str(),
+                  static_cast<long long> (originalSize), count);
+        }
+
+        result.ok = true;
+        return result;
+    }
+
+    struct ChildOutcome
+    {
+        enum class State { spawnFailed, timedOut, finished };
+
+        State state = State::spawnFailed;
+        int exitCode = -1;
+        juce::String output;
+    };
+
+    // Executa o proprio harness contra um bundle e devolve como o filho terminou.
+    //
+    // Processo separado, e nao uma chamada em processo. O AudioPluginFormatManager
+    // guarda as instancias que ja criou e as reaproveita pelo pluginID, e o
+    // bundle corrompido tem exatamente o mesmo pluginID do bundle bom: em
+    // processo, o caso negativo receberia de volta a instancia ja carregada e
+    // passaria com um bundle quebrado - exatamente o falso verde que a T7 existe
+    // para impedir.
+    ChildOutcome runChild (const juce::File& target)
+    {
+        ChildOutcome result;
+
+        juce::StringArray args;
+        args.add (juce::File::getSpecialLocation (juce::File::currentExecutableFile).getFullPathName());
+        args.add ("--negative-child");
+        args.add (target.getFullPathName());
+
+        juce::ChildProcess child;
+
+        if (! child.start (args, juce::ChildProcess::wantStdOut | juce::ChildProcess::wantStdErr))
+            return result;
+
+        // wait antes de ler: o pipe do Windows tem 64 KB e o filho escreve menos
+        // de 1 KB, entao nao ha risco de o filho travar em write. Se algum dia o
+        // filho falar mais que isso, e preciso drenar o pipe enquanto espera.
+        if (! child.waitForProcessToFinish (childTimeoutMs))
+        {
+            child.kill();
+            result.state = ChildOutcome::State::timedOut;
+            return result;
+        }
+
+        result.state = ChildOutcome::State::finished;
+        result.exitCode = static_cast<int> (child.getExitCode());
+        result.output = child.readAllProcessOutput();
+        return result;
+    }
+
+    void stepNegativeCorruptBundle (int n, const juce::File& bundle)
+    {
+        constexpr const char* name = "negative-corrupt-bundle";
+        emit ("[step] %02d/%02d %s", n, totalSteps, name);
+
+        struct Variant
+        {
+            const char* label;
+            Corruption corruption;
+            int expectedExit;
+        };
+
+        // Variantes. Medidas em 02/10/2026 contra o bundle Release local.
+        //
+        // O que o loader headless do JUCE detecta, e o que ele tolera, foi
+        // medido e nao presumido. Tres corrupcoes de conteudo foram rejeitadas
+        // pelo criterio original e nenhuma delas serve de negativo:
+        //
+        //   - moduleinfo.json com lixo (1111 -> 35 bytes): aceito. O passo 3
+        //     segue devolvendo name=PartePlay e uid=1488198423, porque quem
+        //     responde por nome e UID e a factory do binario, nao o manifesto.
+        //   - moduleinfo.json apagado: aceito, pelo mesmo motivo. O manifesto e
+        //     dispensavel nesse caminho.
+        //   - pasta renomeada para Outro.vst3 com o binario ainda chamado
+        //     PartePlay.vst3: aceito. O SDK oficial reprova o nome
+        //     (module_win32.cpp:158 usa o nome da pasta), mas o modulo headless
+        //     do JUCE varre Contents/<arch>/ e carrega o que encontrar.
+        //
+        // Consequencia que vale mais que as tres variantes: corrupcao de
+        // conteudo NAO faz o passo 3 falhar neste loader. NO_PLUGIN_IN_PATH so
+        // sai quando o caminho esta errado - que e o que os probes de path
+        // avulso ja provaram. Um negativo de conteudo tem de mirar no binario,
+        // e falha no passo 5, com INSTANTIATE_FAILED.
+        //
+        // As duas variantes abaixo miram o binario por caminhos diferentes:
+        // modulo vazio e cabecalho invalido com tamanho preservado. Se as duas
+        // forem aceitas, o harness deixou de recusar artefato quebrado.
+        const Variant variants[] =
+        {
+            { "binario-truncado", Corruption::binaryTruncated, 5 },
+            { "cabecalho-invalido", Corruption::binaryHeaderCorrupted, 5 }
+        };
+
+        for (const auto& variant : variants)
+        {
+            emit ("       -- variante %s", variant.label);
+
+            const auto copy = makeCorruptedCopy (bundle, variant.corruption);
+
+            if (! copy.ok)
+                bail (n, name, copy.failure, copy.detail.toStdString().c_str());
+
+            // A copia corrompida e a ultima criada, e o registro e limpo a cada
+            // execucao com sucesso; pegar a ultima entrada evita propagar um
+            // caminho de volta da funcao que montou a copia.
+            const auto child = runChild (tempDirs.back().getChildFile (bundle.getFileName()));
+
+            if (child.state == ChildOutcome::State::spawnFailed)
+                bail (n, name, "NEGATIVE_SPAWN_FAILED", variant.label);
+
+            if (child.state == ChildOutcome::State::timedOut)
+                bail (n, name, "NEGATIVE_CHILD_TIMEOUT", variant.label);
+
+            if (verbose)
+                emit ("[info] saida do filho (variante %s):\n%s", variant.label,
+                      child.output.toStdString().c_str());
+
+            const auto rejected = child.exitCode == variant.expectedExit
+                               && child.output.contains ("[fail]")
+                               && child.output.contains ("reason=");
+
+            // Saiu 0 significa que o filho carregou o bundle corrompido. E o caso
+            // que este passo existe para pegar: nao e um detalhe de log, e a
+            // prova de que o harness nao sabe rejeitar.
+            if (! rejected)
+            {
+                char detail[192] = {};
+                std::snprintf (detail, sizeof detail,
+                               "variante=%s exit=%d esperado=%d  filho_nao_rejeitou_o_bundle",
+                               variant.label, child.exitCode, variant.expectedExit);
+                bail (n, name, "NEGATIVE_CASE_UNEXPECTED_SUCCESS", detail);
+            }
+
+            // O filho nao pode ter chegado a instanciar: e o passo 5 que carrega o
+            // codigo corrompido. Se [ok] 05 aparecer, o exit veio de outra coisa.
+            if (child.output.contains ("[ok]   05/"))
+                bail (n, name, "NEGATIVE_REACHED_INSTANTIATION", variant.label);
+
+            char detail[160] = {};
+            std::snprintf (detail, sizeof detail, "variante=%s exit=%d  rejeitado como esperado",
+                           variant.label, child.exitCode);
+            emit ("       %s", detail);
+        }
+
+        stepOk (n, name);
+    }
 }
 
 //==============================================================================
@@ -209,6 +528,10 @@ try
     juce::ScopedJuceInitialiser_GUI juceInit;
 
     juce::String bundlePath;
+    bool isNegativeChild = false;
+
+    if (juce::SystemStats::getEnvironmentVariable ("PARTEPLAY_HARNESS_VERBOSE", juce::String()) == "1")
+        verbose = true;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -216,6 +539,8 @@ try
 
         if (arg == "--verbose")
             verbose = true;
+        else if (arg == "--negative-child")
+            isNegativeChild = true;
         else if (bundlePath.isEmpty())
             bundlePath = arg;
     }
@@ -433,13 +758,26 @@ try
 
     stepLocateTools (8, bundle);
 
+    // --negative-child marca o processo filho da T7. Sem isso o filho, ao chegar
+    // aqui, dispararia a T7 de novo contra outro bundle corrompido e a copia se
+    // repetiria ate esgotar o temp. O filho roda os passos 1 a 8 e sai.
+    if (! isNegativeChild)
+        stepNegativeCorruptBundle (9, bundle);
+
+    cleanupTempDirs();
     emit ("[done] summary  steps_ok=%d  failed_at=NONE", stepsOk);
-    emit ("[harness] resultado=PROBE_OK  pendente=caso negativo (T7 do backlog)");
+    emit ("[harness] resultado=PROBE_OK  %s",
+          isNegativeChild ? "papel=filho do caso negativo" : "caso_negativo=executado");
     return 0;
 }
 catch (const std::exception& e)
 {
     emit ("[fail] summary  steps_ok=%d  failed_at=00/%02d  reason=UNHANDLED_EXCEPTION  %s",
           stepsOk, totalSteps, e.what());
-    return 0;
+    cleanupTempDirs();
+
+    // Antes isto devolvia 0: uma excecao inesperada virava verde, que e o oposto
+    // do que um harness deve fazer. Uma falha sem etapa correspondente e um
+    // codigo proprio, para nao ser confundida com uma etapa que falhou.
+    return infrastructureFailure;
 }
