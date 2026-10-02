@@ -79,6 +79,21 @@ jobs:
           fi
           echo "Nenhuma versao hardcoded em Source/ ou Tests/"
 
+  ci-shell:
+    name: Shell da CI compativel com macOS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Nenhum builtin posterior ao bash 3.2 nos passos POSIX
+        run: |
+          # O runner de macOS usa o bash 3.2 da Apple; os outros, bash 5. Um
+          # builtin de bash 4+ funciona nos tres menos no macOS, e o sintoma e
+          # `command not found` com exit 127 - sem dizer qual linha do YAML
+          # causou, e com o Ubuntu passando, entao so um job de quatro reprova.
+          python3 scripts/check-ci-shell.py
+      - name: O proprio gate se cobre
+        run: python3 scripts/check-ci-shell.py --self-test
+
   build:
     name: ${{ matrix.name }}
     needs: [ metadata, version-single-source ]
