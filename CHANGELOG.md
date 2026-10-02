@@ -14,8 +14,15 @@ funcionalidade — a regra está em `CONTRIBUTING.md` e o número mora só em
 
 A 0.2.0 estável nunca foi publicada: o que existia era `v0.2.0-rc.1`, cortada de
 `4113f13`. Esta é a primeira versão com tag de código dentro dos repositórios de
-instalação, e ela é distribuída como fonte — a CI compila e testa as quatro
-plataformas a cada push, mas nenhum binário empacotado está anexado a esta tag.
+instalação, e a primeira com binários anexados à release: Windows x86-64, macOS
+universal e Linux x86-64, todos compilados e testados pela CI no mesmo commit que
+a tag aponta.
+
+**As ferramentas externas vão num arquivo à parte.** O bundle tem ~6,5 MB e não
+carrega `ffmpeg`/`soundstretch`; eles somam ~65 MB comprimidos e só interessam a
+quem quer a análise de andamento pelo SoundStretch. `PartePlay-0.3.0-tools-win-x64.zip`
+é opcional, e o README diz onde descompactar — ao lado do executável, ou em
+`%APPDATA%\PartePlay\bin`, que não exige privilégio de administrador.
 
 **Por que 0.3.0 e não 0.2.2.** A linha foi aberta como `0.2.2`, *patch* por escopo:
 corrigir o que já existia, sem funcionalidade nova. Ela deixou de ser patch no
