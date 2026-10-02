@@ -356,6 +356,28 @@ licence; whether PartePlay ships a commercial edition is an open product decisio
 
 ---
 
+## Acknowledgments
+
+**Thiago Gonçalves** ([LinkedIn](https://www.linkedin.com/in/thiago-g/)) — unprompted
+review and measurement across several releases.
+
+- Read `release/0.2.2` and reported that the tuning correction was still routed
+  through the vocoder, and that `exportTempoMap` writes the raw `getBpm()`. Both
+  remain open and tracked.
+- Measured the tuning error against carrier frequency at the 17-cent limit:
+  100% at 2 kHz, 93% at 4 kHz, **0.9% at 6 kHz**. That measurement is what turned
+  "the high end sounds wrong" into a defect locatable in the phase accumulator.
+- Reported that an E♭ instrument transposed **+3 semitones instead of −9** — the
+  same pitch class, the wrong octave, and it passed by ear. Fixed on 27/09/2026.
+- Asked for the transposition table in interval-plus-octave form, tested per
+  instrument. That is the format this project uses.
+
+The 6 kHz measurement is the clearest case of what this project gains from
+collaboration: a specific, falsifiable observation that decided what got
+investigated next.
+
+---
+
 ## Credits and technologies
 
 The same list is shown inside the plugin, behind the **i** button next to the language
