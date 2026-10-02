@@ -328,6 +328,54 @@ parteplay_warnings_as_errors(PartePlayTests)
 
 juce_generate_juce_header(PartePlayTests)
 
+# ---------------------------------------------------------------------------
+# Harness de carga do VST3 (epic/vst3-load-harness-ci, adr/0001).
+#
+# Alvo separado do PartePlayTests e, sobretudo, sem PARTEPLAY_SOURCES: o
+# harness carrega o bundle .vst3 como dado externo, e linkar o codigo do plugin
+# aqui faria o teste provar a copia compilada neste executavel em vez do
+# artefato que o usuario baixa.
+#
+# Depende so de juce_audio_processors_headless, que declara apenas
+# juce_audio_basics e juce_events: nenhum modulo de GUI entra no link, que e o
+# que permite rodar isto num agente de CI sem display.
+juce_add_console_app(PartePlayHarness PRODUCT_NAME "PartePlayHarness")
+
+target_sources(PartePlayHarness PRIVATE
+    Tests/LoadHarness.cpp
+)
+
+target_link_libraries(PartePlayHarness PRIVATE
+    juce::juce_audio_processors_headless
+    juce::juce_audio_basics
+    juce::juce_core
+    juce::juce_events
+)
+
+# O modulo headless so registra VST3 (e os demais formatos) quando este define
+# existe. Sem ele o VST3 e compilado fora e o harness acusaria
+# NO_PLUGIN_IN_PATH, que e um falso negativo: a causa real seria o proprio
+# build, nao o bundle.
+target_compile_definitions(PartePlayHarness PRIVATE
+    JUCE_PLUGINHOST_VST3=1
+    JUCE_PLUGINHOST_LV2=1
+    JUCE_PLUGINHOST_LADSPA=1
+    JUCE_STANDALONE_APPLICATION=1
+)
+
+target_compile_features(PartePlayHarness PRIVATE cxx_std_17)
+
+parteplay_warnings_as_errors(PartePlayHarness)
+
+juce_generate_juce_header(PartePlayHarness)
+
+# O harness NAO e registrado em CTest, e uma decisao, nao uma omissao: o
+# bundle .vst3 so existe depois da etapa de empacotamento do CI, portanto nao
+# ha caminho para resolver no configure time. Ele roda como passo da workflow
+# logo apos o empacotamento, recebendo o bundle pelo argv - que e a T9.
+# Registrar aqui exigiria um caminho falso e o harness passaria a verde sem
+# nunca ter carregado nada.
+
 include(CTest)
 
 add_test(NAME domain COMMAND PartePlayTests)
