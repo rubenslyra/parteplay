@@ -209,7 +209,7 @@ verified so far.
 | The plugin survives the tempo tools being **absent** | load harness, in CI                     | Yes        |
 | **Audio fidelity — sync under stretch, vocoder**   | —                                       | **No**     |
 | **`locateTools()` actually finds ffmpeg/soundstretch** | —                                    | **No**     |
-| **Tempo/MB sync inside a real host**               | —                                       | **No**     |
+| **Tempo/MIDI sync inside a real host**             | —                                       | **No**     |
 | **The plugin appears in MuseScore's instrument list** | —                                     | **No**     |
 
 The last four are the reason a manual pass still matters. The harness proves the plugin
