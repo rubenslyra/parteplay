@@ -70,7 +70,12 @@ runs:
         rm -rf "$dest"
         mkdir -p "$dest"
         unzip -q '${{ inputs.zip }}' -d "$dest"
-        mapfile -t bundles < <(find "$dest" -type d -name 'PartePlay.vst3')
+        # Sem `mapfile`: ele e builtin do bash 4+, e o runner de macOS usa o
+        # bash 3.2 da Apple, onde isso e `command not found` e mata o passo com
+        # 127. `while read` com `|| [ -n "$line" ]` cobre a ultima linha sem
+        # newline final e funciona no 3.2.
+        bundles=()
+        while IFS= read -r line || [ -n "$line" ]; do bundles+=("$line"); done < <(find "$dest" -type d -name 'PartePlay.vst3')
         if [ "${#bundles[@]}" -ne 1 ]; then
           echo "::error::esperado exatamente 1 bundle PartePlay.vst3 no zip, encontrados ${#bundles[@]}"
           for b in "${bundles[@]}"; do echo "  encontrado: $b"; done
@@ -111,7 +116,8 @@ runs:
         harness="$HARNESS"
         if [ ! -f "$harness" ]; then
           echo "::notice::$harness nao existe; procurando o harness no build"
-          mapfile -t cands < <(find . -path '*/PartePlayHarness_artefacts/*' \
+          cands=()
+          while IFS= read -r line || [ -n "$line" ]; do cands+=("$line"); done < <(find . -path '*/PartePlayHarness_artefacts/*' \
                                     -name 'PartePlayHarness' -o \
                                -path '*/PartePlayHarness_artefacts/*' \
                                     -name 'PartePlayHarness.exe' | sort -u)
