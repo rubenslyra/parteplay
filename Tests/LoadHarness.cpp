@@ -515,6 +515,16 @@ namespace
             std::snprintf (detail, sizeof detail, "variante=%s exit=%d  rejeitado como esperado",
                            variant.label, child.exitCode);
             emit ("       %s", detail);
+
+            // A linha [fail] do filho e a unica parte do log que diz POR QUE o
+            // bundle foi recusado, e e ela que o mantenedor vai procurar quando
+            // este passo reprovar. Repassar sempre, e nao so em verbose: um
+            // motivo de recusa omitido do log obriga a rerodar a maquina de quem
+            // leu o aviso.
+            const auto failLine = child.output.fromFirstOccurrenceOf ("[fail]", false, false);
+
+            if (failLine.isNotEmpty())
+                emit ("       filho: %s", failLine.upToFirstOccurrenceOf ("\n", false, false).trim().toStdString().c_str());
         }
 
         stepOk (n, name);

@@ -87,18 +87,27 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # `harness` fica na matriz, e nao montado com expressao ternaria na
+          # hora de usar, porque ele depende do GERADOR e nao da plataforma:
+          # msvc e multi-config e produz o segmento de config; os presets Ninja
+          # nao definem CMAKE_BUILD_TYPE, entao $<CONFIG> expande para vazio e o
+          # segmento nao existe. A acao composta ainda exige unicidade se o
+          # caminho esperado nao bater, mas espera-se que ele bata.
           - name: Windows
             os: windows-2022
             preset: msvc
             build_type: Release
+            harness: build/msvc/PartePlayHarness_artefacts/Release/PartePlayHarness.exe
           - name: Ubuntu
             os: ubuntu-24.04
             preset: linux
             build_type: Release
+            harness: build/linux/PartePlayHarness_artefacts/PartePlayHarness
           - name: macOS
             os: macos-14
             preset: macos
             build_type: Release
+            harness: build/macos/PartePlayHarness_artefacts/PartePlayHarness
 
     steps:
       - uses: actions/checkout@v4
@@ -231,11 +240,32 @@ jobs:
         run: |
           set -euo pipefail
           root="build/${{ matrix.preset }}"
-          bundle=$(find "$root" -type d -name 'PartePlay.vst3' | head -1)
-          if [ -z "$bundle" ]; then
-            echo "::error::PartePlay.vst3 nao encontrado em $root"
-            exit 1
+
+          # Caminho exato primeiro, e nao "o primeiro PartePlay.vst3 que
+          # aparecer". O job Windows ja teve esse bug: o cache de build restaura
+          # arvores antigas (restore-keys ignora o sha) e, num projeto
+          # multi-config, "Debug" ordena antes de "Release" no nome do
+          # diretorio, entao o passo empacotava um build de outro commit sem
+          # erro visivel. Aqui a diferenca e que Ninja e single-config e nao
+          # define CMAKE_BUILD_TYPE, entao o segmento de config simplesmente nao
+          # existe - e por isso que os dois caminhos sao testados, nesta ordem.
+          bundle="$root/PartePlay_artefacts/${{ matrix.build_type }}/VST3/PartePlay.vst3"
+          if [ ! -d "$bundle" ]; then
+            bundle="$root/PartePlay_artefacts/VST3/PartePlay.vst3"
           fi
+
+          # Ultimo recurso: procurar. Mas exigir unicidade e falhar com a lista
+          # quando ha mais de um candidato, em vez de escolher em silencio.
+          if [ ! -d "$bundle" ]; then
+            mapfile -t cands < <(find "$root" -type d -name 'PartePlay.vst3' -not -path '*/_deps/*')
+            if [ "${#cands[@]}" -ne 1 ]; then
+              echo "::error::esperado 1 bundle em $root, encontrados ${#cands[@]}"
+              for c in "${cands[@]}"; do echo "  encontrado: $c"; done
+              exit 1
+            fi
+            bundle="${cands[0]}"
+          fi
+
           echo "Bundle: $bundle"
           # Mesma verificacao do passo Windows: o artefato e o zip, e nada
           # depois disso pode tirar um arquivo de dentro dele.
@@ -252,11 +282,20 @@ jobs:
           (cd "$(dirname "$bundle")" && zip -r "$GITHUB_WORKSPACE/$out" "$(basename "$bundle")")
           echo "Artefato: $out"
 
+      # A prova de carga vem DEPOIS do upload, nao antes. Se o harness reprovar,
+      # o passo seguinte e pulado e o zip nao seria publicado - e o zip e
+      # justamente o que precisa estar disponivel para investigar a falha.
       - uses: actions/upload-artifact@v4
         with:
           name: PartePlay-${{ matrix.name }}
           path: ${{ matrix.name }}-PartePlay-PartePlay.vst3.zip
           if-no-files-found: error
+
+      - name: Provar a carga do VST3 publicado
+        uses: ./.github/actions/provar-carga-vst3
+        with:
+          zip: ${{ matrix.name }}-PartePlay-PartePlay.vst3.zip
+          harness: ${{ matrix.harness }}
 
   # macOS universal (x86_64 + arm64) em job separado: exige as duas arquiteturas
   # no mesmo runner, o que so o macOS oferece.
@@ -300,8 +339,21 @@ jobs:
       - name: Empacotar
         run: |
           set -euo pipefail
-          bundle=$(find build/macos-universal -type d -name 'PartePlay.vst3' | head -1)
-          test -n "$bundle" || { echo "::error::bundle universal nao encontrado"; exit 1; }
+          # Caminho exato antes da varredura. macos-universal e Ninja sem
+          # CMAKE_BUILD_TYPE, entao nao ha segmento de config; a varredura fica
+          # como ultimo recurso e exige unicidade, pelo mesmo motivo do job
+          # Linux/macOS.
+          bundle="build/macos-universal/PartePlay_artefacts/VST3/PartePlay.vst3"
+          if [ ! -d "$bundle" ]; then
+            mapfile -t cands < <(find build/macos-universal -type d -name 'PartePlay.vst3' -not -path '*/_deps/*')
+            if [ "${#cands[@]}" -ne 1 ]; then
+              echo "::error::esperado 1 bundle universal, encontrados ${#cands[@]}"
+              for c in "${cands[@]}"; do echo "  encontrado: $c"; done
+              exit 1
+            fi
+            bundle="${cands[0]}"
+          fi
+          echo "Bundle: $bundle"
           # Num bundle VST3 de macOS o executavel fica em Contents/MacOS/ com o
           # nome do produto e SEM extensao: procurar por *.dylib nao acha nada.
           # A ordem importa: primeiro o caminho do bundle, depois qualquer
@@ -331,3 +383,13 @@ jobs:
           name: PartePlay-macOS-universal
           path: macOS-universal-PartePlay-PartePlay.vst3.zip
           if-no-files-found: error
+
+      # O harness tambem roda no bundle universal. E a configuracao onde vale mais
+      # a prova: um Mach-O universal carregado num processso de uma arquitetura so
+      # exercita metade do binario, e um erro de link pode passar no job macOS
+      # comum e falhar so aqui.
+      - name: Provar a carga do VST3 universal
+        uses: ./.github/actions/provar-carga-vst3
+        with:
+          zip: macOS-universal-PartePlay-PartePlay.vst3.zip
+          harness: build/macos-universal/PartePlayHarness_artefacts/PartePlayHarness

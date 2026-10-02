@@ -1,0 +1,156 @@
+name: Provar a carga do VST3
+description: >-
+  Carrega o bundle do ZIP publicado com o harness e falha o job se ele nao
+  carregar, se nao instanciar ou se nao recusar o caso negativo.
+
+# Uma acao composta, e nao tres copias do mesmo script: o job build roda em tres
+# plataformas e o job universal roda uma quarta, e quatro copias de um shell que
+# decide o destino do build divergem no primeiro ajuste. Aqui o script existe uma
+# vez e as diferencas de plataforma ficam declaradas, visiveis.
+
+inputs:
+  zip:
+    description: Caminho do ZIP publicado, relativo a raiz do workspace.
+    required: true
+  harness:
+    description: Caminho do executavel do harness, relativo a raiz do workspace.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # O harness roda contra o ZIP extraido, e nao contra a arvore de build.
+    #
+    # O alvo da epic e o artefato que o usuario baixa. Testar a arvore deixaria
+    # passar um empacotamento quebrado - e o empacotamento aqui sao ~200 linhas de
+    # shell por plataforma, que e onde ja apareceu bug real. Extraindo o ZIP, o
+    # harness e a ultima defesa sobre o arquivo que de fato sera publicado.
+    #
+    # Caminho RELATIVO de proposito: o passo de extracao e nativo por plataforma
+    # (Expand-Archive no Windows, unzip no resto), mas o caminho e consumido em
+    # bash nos tres, e um caminho relativo e o unico formato que PowerShell e
+    # bash aceitam sem cygpath no meio.
+    - name: Extrair o ZIP publicado (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      id: extrair
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $dest = 'harness-prova'
+        if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
+        Expand-Archive -Path '${{ inputs.zip }}' -DestinationPath $dest -Force
+        # O zip pode conter uma unica pasta de nivel superior ou o proprio
+        # conteudo do bundle. Os dois layouts aparecem em empacotadores
+        # diferentes, entao a busca e recursiva e a contagem e conferida: mais de
+        # um bundle significa que o passo nao sabe qual dos dois e o certo, e
+        # escolher um deles em silencio e exatamente o bug que o passo Windows do
+        # empacotamento ja teve.
+        $bundles = @(Get-ChildItem $dest -Recurse -Directory -Filter 'PartePlay.vst3')
+        if ($bundles.Count -ne 1) {
+          Write-Error "::error::esperado exatamente 1 bundle PartePlay.vst3 no zip, encontrados $($bundles.Count)"
+          $bundles | ForEach-Object { Write-Host "  encontrado: $($_.FullName)" }
+          exit 1
+        }
+        $rel = Resolve-Path -Relative $bundles[0].FullName
+        Write-Host "Bundle extraido: $rel"
+        "bundle=$rel" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+    - name: Extrair o ZIP publicado (Linux/macOS)
+      if: runner.os != 'Windows'
+      shell: bash
+      id: extrair
+      run: |
+        set -euo pipefail
+        dest="harness-prova"
+        rm -rf "$dest"
+        mkdir -p "$dest"
+        unzip -q '${{ inputs.zip }}' -d "$dest"
+        mapfile -t bundles < <(find "$dest" -type d -name 'PartePlay.vst3')
+        if [ "${#bundles[@]}" -ne 1 ]; then
+          echo "::error::esperado exatamente 1 bundle PartePlay.vst3 no zip, encontrados ${#bundles[@]}"
+          for b in "${bundles[@]}"; do echo "  encontrado: $b"; done
+          exit 1
+        fi
+        bundle="${bundles[0]#"$GITHUB_WORKSPACE"/}"
+        echo "Bundle extraido: $bundle"
+        echo "bundle=$bundle" >> "$GITHUB_OUTPUT"
+
+    - name: Carregar o bundle publicado
+      shell: bash
+      env:
+        BUNDLE: ${{ steps.extrair.outputs.bundle }}
+        HARNESS: ${{ inputs.harness }}
+        # Deliberadamente ligado no CI: a linha de recusa do filho_negative e a
+        # unica parte do log que diz por que o bundle foi recusado. Num log
+        # efemero, omitir esse motivo obriga quem leu o aviso a rerodar o job
+        # inteiro na maquina local para discover algo que ja estava escrito.
+        PARTEPLAY_HARNESS_VERBOSE: '1'
+      run: |
+        set -uo pipefail
+
+        # Caminho relativo para os dois lados: o workspace do runner e o cwd dos
+        # tres runners, entao nao ha cygpath nem $GITHUB_WORKSPACE no meio.
+        if [ ! -d "$BUNDLE" ]; then
+          echo "::error::bundle nao encontrado: $BUNDLE"
+          exit 1
+        fi
+
+        # O caminho do executavel vem do chamador porque ele sabe o gerador:
+        # 'msvc' e multi-config e produz PartePlay_artefacts/Release/, enquanto
+        # os presets Ninja nao definem CMAKE_BUILD_TYPE e produzem
+        # PartePlay_artefacts/ sem segmento de config. Se o caminho esperado nao
+        # bater, procura-se e exige-se unicidade - nunca 'o primeiro que
+        # aparecer', que e o que fez o job publicar um build Debug antigo.
+        harness="$HARNESS"
+        if [ ! -f "$harness" ]; then
+          echo "::notice::$harness nao existe; procurando o harness no build"
+          mapfile -t cands < <(find . -path '*/PartePlayHarness_artefacts/*' \
+                                    -name 'PartePlayHarness' -o \
+                               -path '*/PartePlayHarness_artefacts/*' \
+                                    -name 'PartePlayHarness.exe' | sort -u)
+          if [ "${#cands[@]}" -ne 1 ]; then
+            echo "::error::esperado 1 executavel PartePlayHarness, encontrados ${#cands[@]}"
+            for c in "${cands[@]}"; do echo "  encontrado: $c"; done
+            echo "::error::o harness e um target de console separado; se ele nao foi"
+            echo "::error::compilado, a configuracao do build esta errada e o bundle"
+            echo "::error::nao foi testado por ninguem."
+            exit 1
+          fi
+          harness="${cands[0]}"
+          echo "::notice::harness resolvido para $harness"
+        fi
+
+        chmod +x "$harness" 2>/dev/null || true
+        log="harness-carga.log"
+
+        echo "::group::Saida do harness ($HARNESS)"
+        "$HARNESS" "$BUNDLE" 2>&1 | tee "$log"
+        # PIPESTATUS[0] e o codigo do harness. Sem ele, o pipeline devolve o
+        # codigo do tee, que e quase sempre 0 - e o job passaria com o bundle
+        # quebrado, que e o oposto do que esta acao existe para impedir.
+        code=${PIPESTATUS[0]}
+        echo "::endgroup::"
+        echo "harness exit=$code"
+
+        # Resumo de uma linha, que e o que aparece na lista de checks.
+        ok_count=$(grep -c '^\[ok\]' "$log" || true)
+        echo "::notice::harness: $ok_count etapas ok, exit=$code"
+
+        if [ "$code" -ne 0 ]; then
+          echo "::error::o bundle publicado nao passou na prova de carga (exit=$code)"
+          exit "$code"
+        fi
+
+    # O log sobe como artefato e nao so no console. O `tee` ja coloca tudo no log
+    # do job, mas o log do job expira em 90 dias e o harness falha raramente:
+    # quando falha, e o objeto do diagnostico, e ele precisa sobreviver ao job que
+    # o produziu. `if: always()` para subir mesmo quando a prova reprovou - que e
+    # exatamente o caso em que ele importa.
+    - name: Anexar o log da prova
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: harness-carga-log-${{ github.job }}
+        path: harness-carga.log
+        if-no-files-found: warn
+        retention-days: 30

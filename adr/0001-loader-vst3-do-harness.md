@@ -235,6 +235,44 @@ saídas:
 Um dump verbose fica atrás de flag (`--verbose` ou `PARTEPLAY_HARNESS_VERBOSE`),
 nunca por padrão, porque o log vai para artefato de CI.
 
+## T9: onde o harness roda, e o que ele não prova
+
+O harness roda em **quatro** jobs: Windows, Ubuntu, macOS e macOS universal. Ele
+carrega o **bundle extraído do ZIP publicado**, e não a árvore de build. O alvo
+da epic é o artefato que o usuário baixa, e o empacotamento são ~200 linhas de
+shell por plataforma — é onde já apareceu bug real. Testar a árvore deixaria
+passar um empacotamento quebrado.
+
+**Por que uma ação composta.** O script existe em `.github/actions/provar-carga-vst3/`
+e não em três cópias: quatro Plataformas divergem no primeiro ajuste.
+
+**O caminho do executável depende do gerador, não da plataforma.** O preset
+`msvc` é multi-config e produz `PartePlayHarness_artefacts/Release/`; os presets
+`linux`, `macos` e `macos-universal` são Ninja e **não definem
+`CMAKE_BUILD_TYPE`**, então `$<CONFIG>` — que é como o JUCE monta
+`${CMAKE_CURRENT_BINARY_DIR}/${target}_artefacts/$<CONFIG>`
+(`JUCEUtils.cmake:2152`) — expande para vazio e o segmento não existe. O caminho
+está declarado na matriz do workflow, e a ação exige unicidade se ele não bater,
+com falha e lista de candidatos.
+
+**Dois bugs pré-existentes que a T9 expôs, ambos fora do escopo dela:**
+
+1. `cmake --build build/linux --config Release` **ignora** `--config Release`:
+   Ninja é single-config e nenhum preset define `CMAKE_BUILD_TYPE`. As builds de
+   Linux e macOS saem **sem otimização e sem `NDEBUG`**, o que é exatamente o que
+   o aviso de `JuceHeader.h` pede para não acontecer. O job compila Release em
+   letra, e compila outra coisa.
+2. O empacotamento de Linux/macOS usava `find … | head -1`, que é **o bug que já
+   tinha sido corrigido no Windows** (o artefato publicado saía de um build
+   antigo, sem erro visível). Corrigido: caminho exato primeiro, e a varredura
+   como último recurso **exigindo unicidade e falhando com a lista** quando há
+   mais de um candidato. Escolher em silêncio é o que produziu o bug.
+
+Verificado em 02/10/2026 no Windows: `Compress-Archive` → `Expand-Archive`
+produz **exatamente 1** `PartePlay.vst3` com 4 arquivos, e o harness carrega esse
+bundle extraído com 9/9 e `exit=0`. O que essa passagem não prova é o
+comportamento em Linux e macOS, que só o CI prova.
+
 ## Trade-offs
 
 **Escolhido: `VST3PluginFormatHeadless`.**
@@ -315,7 +353,15 @@ tamanho do plugin em vez de com o número de etapas.
 
 ## O que este ADR não decide
 
-T9. O backlog manda "reusar o `cmake --install` que já existe" e ele não
-existe — o empacotamento são ~200 linhas em `.github/workflows/ci.yml:181-258`,
-que já produzem o bundle (`ci.yml:198`, `:234`, `:303`). T9 vira um passo
-**depois** do empacotamento, não um alvo de CMake.
+**T10.** A tabela de cobertura do README — o que o harness prova sozinho e o que
+continua dependendo de um host real.
+
+**A correção de `CMAKE_BUILD_TYPE` nos presets Ninja.** É um bug real e grave,
+descrito na seção da T9, mas mudar a configuração de build muda os binários
+publicados. Isso precisa de decisão e de um PR próprios, não de um commit
+dentro de uma epic de teste.
+
+**T9 não é um alvo de CMake.** O backlog manda "reusar o `cmake --install` que já
+existe" e ele não existe: o empacotamento são ~200 linhas em
+`.github/workflows/ci.yml`, que já produzem o bundle. O harness é um passo
+**depois** do empacotamento, executado pela ação composta.
