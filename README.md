@@ -179,6 +179,43 @@ not by ear:
 `install-vst3.ps1` runs this suite before installing and aborts on any failure
 (`-SkipTests` to ignore).
 
+### What the VST3 load harness covers
+
+The suite above tests the domain in isolation. A second, separate executable loads the
+**published bundle** through `juce::VST3PluginFormatHeadless` — no GUI, no audio device — and
+runs as a step of CI *after* packaging, because the bundle only exists once it is packaged:
+
+```powershell
+cmake --build build\msvc-2026 --config Release --target PartePlayHarness
+.\build\msvc-2026\PartePlayHarness_artefacts\Release\PartePlayHarness.exe `
+  .\build\msvc-2026\PartePlay_artefacts\Release\VST3\PartePlay.vst3
+```
+
+`$env:PARTEPLAY_HARNESS_VERBOSE = "1"` includes the plugin's own stdout. Exit `0` passes,
+`5` means the negative case was rejected as intended, `99` is an unhandled exception.
+
+The pipeline is configured to run it in four jobs — Windows, Ubuntu, macOS and macOS universal —
+against the **extracted ZIP** rather than the build tree, so a packaging fault fails the build.
+That configuration is new and has not yet run on all four platforms; Windows is the only one
+verified so far.
+
+| Layer                                              | Covered by                              | Automated? |
+| -------------------------------------------------- | --------------------------------------- | ---------- |
+| Musical domain, text, fingerprinting               | `ctest` (461 checks)                    | Yes        |
+| The ZIP unzips to exactly one `PartePlay.vst3`     | load harness, in CI                     | Yes        |
+| Bundle loads, instantiates, initialises, processes  | load harness, in CI                     | Yes        |
+| A corrupt binary is rejected, not silently accepted | load harness, in CI                     | Yes        |
+| Parameters are discovered and enumerated            | load harness, in CI                     | Yes        |
+| The plugin survives the tempo tools being **absent** | load harness, in CI                     | Yes        |
+| **Audio fidelity — sync under stretch, vocoder**   | —                                       | **No**     |
+| **`locateTools()` actually finds ffmpeg/soundstretch** | —                                    | **No**     |
+| **Tempo/MB sync inside a real host**               | —                                       | **No**     |
+| **The plugin appears in MuseScore's instrument list** | —                                     | **No**     |
+
+The last four are the reason a manual pass still matters. The harness proves the plugin
+**loads and survives being told to process**; it cannot prove it sounds right, keeps time, finds
+its external tools, or that MuseScore can see it. See [`DEBUG.md`](DEBUG.md) for the manual pass.
+
 ## Install
 
 Close MuseScore (or the DAW) before installing — the binary is locked while the plugin is loaded.
@@ -310,7 +347,8 @@ Structural decisions worth knowing:
   `TempoAnalyser` does the work on its own — which is the intended behaviour, not a defect. Tools
   can also be pointed elsewhere with the `PARTEPLAY_TOOLS_DIR` environment variable.
 - The audio path itself (sync under time-stretch, vocoder) has no automated tests and still relies
-  on host validation.
+  on host validation. The load harness proves the plugin loads, instantiates and processes, not
+  that it sounds correct — see the coverage table under [Tests](#tests).
 
 ## Documentation
 

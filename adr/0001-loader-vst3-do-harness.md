@@ -107,11 +107,21 @@ passo de descoberta acusaria a causa errada.
 | 5 | `createPluginInstance` | `INSTANTIATE_FAILED`, `INIT_FAILED` |
 | 6 | Conferir estado após `prepareToPlay` | `INIT_FAILED` |
 | 7 | `processBlock` em buffer não silencioso, rejeitar saída não finita | `OUTPUT_NON_FINITE`, `PROBE_SIGNAL_TOO_QUIET` |
-| 8 | `locateTools()` dentro do bundle | `FOREIGN_BINARY_IN_BUNDLE` |
+| 8 | Auditar o conteúdo do bundle: nenhum binário estrangeiro | `FOREIGN_BINARY_IN_BUNDLE` |
 | 9 | Caso negativo: binário corrompido **tem** de ser recusado | `NEGATIVE_CASE_UNEXPECTED_SUCCESS`, `NEGATIVE_CORRUPTION_FAILED`, `NEGATIVE_TARGET_NOT_FOUND`, `NEGATIVE_SPAWN_FAILED`, `NEGATIVE_CHILD_TIMEOUT`, `NEGATIVE_REACHED_INSTANTIATION` |
 
 Sobre a etapa 3: `NO_PLUGIN_IN_PATH` é o sinal de **caminho** errado, e nunca de
 conteúdo corrompido. Ver "O que a T7 mudou neste ADR".
+
+**A etapa 8 não é o que o nome sugere, e isso quase virou afirmação falsa no
+README.** Ela imprime `files_in_bundle=4 resources_bin=0 foreign=0`: conta o que
+tem dentro do bundle e falha se houver binário estrangeiro. Ela **não** chama
+`locateTools()` nem prova que as ferramentas são encontradas — `resources_bin=0`
+é justamente o caso em que não há ferramenta nenhuma, e a etapa passa. O que a
+etapa prova é que o plugin **sobrevive à ausência** delas, que é o caminho de
+degrade. As ferramentas vivem em `resources/bin/`, fora do bundle, então nenhum
+teste do bundle extraído poderia provar o lado positivo. Isso é T8, e continua
+aberto.
 
 ### O que o probe mudou neste ADR
 
