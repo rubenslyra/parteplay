@@ -352,14 +352,41 @@ target_link_libraries(PartePlayHarness PRIVATE
     juce::juce_events
 )
 
-# O modulo headless so registra VST3 (e os demais formatos) quando este define
-# existe. Sem ele o VST3 e compilado fora e o harness acusaria
-# NO_PLUGIN_IN_PATH, que e um falso negativo: a causa real seria o proprio
-# build, nao o bundle.
+# O modulo headless injeta JUCE_PLUGINHOST_LADSPA=1 e JUCE_PLUGINHOST_LV2=1 por
+# via INTERFACE, e no Linux os dois precisam de cabecalhos que o runner nao tem:
+# com LADSPA ligado o build morre em `#include <ladspa.h>`, que derrubou Ubuntu e
+# macOS em 02/10.
+#
+# Nao da para vencer por `target_compile_definitions(...=0)`. Medido: o define da
+# interface vai DEPOIS na linha de comando e o compilador aplica o ultimo, entao
+# -DFLAVOR=0 -DFLAVOR=1 resolve em FLAVOR=1. Remover o item da propriedade e o
+# que funciona, e e o que JUCE le: o cabecalho do modulo tem
+# `#ifndef JUCE_PLUGINHOST_LADSPA / #define ... 0`, entao ausente significa
+# desabilitado.
+get_target_property(_harness_host_defs juce_audio_processors_headless INTERFACE_COMPILE_DEFINITIONS)
+if (NOT _harness_host_defs)
+    message(FATAL_ERROR
+        "juce_audio_processors_headless nao expoe INTERFACE_COMPILE_DEFINITIONS. "
+        "A JUCE mudou a forma de habilitar os plugin hosts; o harness deixaria de "
+        "ser VST3-only sem ninguem perceber.")
+endif()
+list(REMOVE_ITEM _harness_host_defs JUCE_PLUGINHOST_LADSPA=1 JUCE_PLUGINHOST_LV2=1)
+set_target_properties(juce_audio_processors_headless
+    PROPERTIES INTERFACE_COMPILE_DEFINITIONS "${_harness_host_defs}")
+
+foreach (_still_on JUCE_PLUGINHOST_LADSPA JUCE_PLUGINHOST_LV2)
+    list(FIND _harness_host_defs "${_still_on}=1" _found)
+    if (NOT _found EQUAL -1)
+        message(FATAL_ERROR
+            "${_still_on}=1 continua na interface do modulo apos a remocao. "
+            "O harness so pode linkar o VST3 SDK.")
+    endif()
+endforeach()
+
+# Header do modulo tem `#ifndef` nesses tres: quem nao define fica em 0. O VST3
+# e 1 explicito porque e o unico que o harness abre.
 target_compile_definitions(PartePlayHarness PRIVATE
     JUCE_PLUGINHOST_VST3=1
-    JUCE_PLUGINHOST_LV2=1
-    JUCE_PLUGINHOST_LADSPA=1
     JUCE_STANDALONE_APPLICATION=1
 )
 

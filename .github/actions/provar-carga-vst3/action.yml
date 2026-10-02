@@ -33,7 +33,12 @@ runs:
     - name: Extrair o ZIP publicado (Windows)
       if: runner.os == 'Windows'
       shell: pwsh
-      id: extrair
+      # O id NAO pode ser o mesmo nos dois passos de extracao, ainda que sejam
+      # mutuamente exclusivos por `if`: o validador do GitHub reprova antes de
+      # avaliar o `if`, e a falha aparece como "may not be used more than once
+      # within the same scope", sem dizer que o problema e o id. Em 02/10 isso
+      # derrubou o job do Windows com um erro que apontava a linha 61 do arquivo.
+      id: extrair_win
       run: |
         $ErrorActionPreference = 'Stop'
         $dest = 'harness-prova'
@@ -58,7 +63,7 @@ runs:
     - name: Extrair o ZIP publicado (Linux/macOS)
       if: runner.os != 'Windows'
       shell: bash
-      id: extrair
+      id: extrair_posix
       run: |
         set -euo pipefail
         dest="harness-prova"
@@ -78,7 +83,9 @@ runs:
     - name: Carregar o bundle publicado
       shell: bash
       env:
-        BUNDLE: ${{ steps.extrair.outputs.bundle }}
+        # O passo que nao rodou deixa a saida vazia, entao o `||` escolhe o que
+        # existe.
+        BUNDLE: ${{ steps.extrair_win.outputs.bundle || steps.extrair_posix.outputs.bundle }}
         HARNESS: ${{ inputs.harness }}
         # Deliberadamente ligado no CI: a linha de recusa do filho_negative e a
         # unica parte do log que diz por que o bundle foi recusado. Num log
