@@ -267,22 +267,45 @@ jobs:
           echo "  $(basename "$out")  ($(du -h "$out" | cut -f1))"
 
       # Um bundle de macOS que nao seja universal passa despercebido ate o
-      # usuario abrir em um processador que ele nao cobre. O CI ja verifica,
-      # mas o binario e conferido de novo aqui, no arquivo que realmente vai
-      # para a pagina de release.
+      # usuario abrir em um processador que ele nao cobre. O CI ja verifica
+      # com lipo no macOS, mas o binario e conferido de novo aqui, no arquivo
+      # que realmente vai para a pagina de release.
+      #
+      # "file", e nao "lipo": este job roda em ubuntu-latest, e lipo so existe
+      # no macOS. A primeira versao deste workflow usou lipo e morreu com
+      # "lipo: command not found" -- o guard fez o que devia, barrou em vez de
+      # anexar as Duarte as cegas, mas a ferramenta estava errada. "file" ja vem
+      # no runner e le as duas arquiteturas de um Mach-O universal:
+      #   Mach-O universal binary with 2 architectures:
+      #     [x86_64:...] [arm64:...]
+      #
+      # As duas arquiteturas sao procuradas em case separados, de proposito. Um
+      # glob ordenado ("*x86_64*arm64*") reprova quando o file imprime as fatias
+      # na ordem inversa, e a ordem nao e garantida -- o build universal do CI
+      # pode emitting qualquer um dos dois primeiros.
       - name: O bundle universal e universal mesmo?
         run: |
           set -euo pipefail
           tmp=$(mktemp -d)
-          unzip -q "dist/PartePlay-${VERSION}-macos-universal.zip" -d "$tmp"
+          unzip -q "./dist/PartePlay-${VERSION}-macos-universal.zip" -d "$tmp"
           bin=$(find "$tmp" -path '*Contents/MacOS/*' -type f | head -1)
           test -n "$bin" || { echo "::error::binario do bundle universal nao encontrado"; exit 1; }
-          archs=$(lipo -archs "$bin")
-          echo "arquiteturas: $archs"
-          case "$archs" in
-            *x86_64*arm64*|*arm64*x86_64*) ;;
-            *) echo "::error::o bundle universal so tem: $archs"; exit 1 ;;
+          info=$(file -b "$bin")
+          echo "$info"
+
+          case "$info" in
+            *"universal binary"*) ;;
+            *) echo "::error::o bundle nao e universal: o usuario abriria no processador errado"; exit 1 ;;
           esac
+          case "$info" in
+            *x86_64*) ;;
+            *) echo "::error::universal sem x86_64 (Intel)"; exit 1 ;;
+          esac
+          case "$info" in
+            *arm64*) ;;
+            *) echo "::error::universal sem arm64 (Apple Silicon)"; exit 1 ;;
+          esac
+          echo "  ok: x86_64 + arm64"
           rm -rf "$tmp"
 
       # O GitHub ja mostra um digest por asset na propria pagina. O arquivo
