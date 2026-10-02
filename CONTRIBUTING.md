@@ -203,8 +203,8 @@ derived from it, so the release and the artefact cannot drift. `CHANGELOG.md` re
 version each entry belongs to, and a release means moving `[Não publicado]` to a version
 heading and tagging it.
 
-The published build is `v0.2.0-rc.1`. Stable `0.2.0` was never released, and neither was
-`0.2.1`, which is why the next number is `0.3.0`.
+The published build is `v0.3.0`. Neither stable `0.2.0` nor `0.2.1` ever shipped — what existed was
+the candidate `v0.2.0-rc.1`, which is why the next number was `0.3.0`.
 
 **A line is renumbered while it is still a branch, never after the tag.** A tag is a promise
 about a tree; renaming a version after the tag means the artefact people downloaded points at

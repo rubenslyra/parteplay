@@ -10,6 +10,14 @@ Próxima versão: **0.3.1** se for só correção de defeito, **0.4.0** se entra
 funcionalidade — a regra está em `CONTRIBUTING.md` e o número mora só em
 `project(PartePlay VERSION x.y.z)`, no `CMakeLists.txt`.
 
+### Corrigido
+
+- **O botão de download do GitHub Pages apontava para `v0.2.0-rc.1`.** A tag
+  `v0.3.0` foi publicada em 2026-10-01 e o badge da capa já dizia `0.3.0`, mas o
+  link e a linha de apoio continuaram no candidato: quem clicava baixava uma
+  release candidata já superada. O botão passou a apontar para `v0.3.0`, e
+  `CONTRIBUTING.md` deixou de afirmar que a build publicada era a `v0.2.0-rc.1`.
+
 ## [0.3.0] — 2026-10-01
 
 A 0.2.0 estável nunca foi publicada: o que existia era `v0.2.0-rc.1`, cortada de
