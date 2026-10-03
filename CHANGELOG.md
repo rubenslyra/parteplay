@@ -6,9 +6,27 @@ Todas as mudanças relevantes do PartePlay. O formato segue
 
 ## [Não publicado]
 
-Próxima versão: **0.3.1** se for só correção de defeito, **0.4.0** se entrar
-funcionalidade — a regra está em `CONTRIBUTING.md` e o número mora só em
-`project(PartePlay VERSION x.y.z)`, no `CMakeLists.txt`.
+Próxima versão: **0.3.1**, correção de defeito. A funcionalidade que depende do
+host — o aviso de atualização via manifesto assinado pela CI e o retorno do Repeat
+com link bidirecional com o transporte — fica para a **0.4.0**. A regra está em
+`CONTRIBUTING.md` e o número mora só em `project(PartePlay VERSION x.y.z)`, no
+`CMakeLists.txt`.
+
+### Removido
+
+- **Os controles de loop de trecho, velocidade de treino e referência manual de
+  A4 saíram do editor.** Repeat de compasso, velocidade de treino e afinação manual
+  nunca estabeleceram link bidirecional com o transporte do MuseScore: o host
+  conduzia o áudio, mas os controles não escreviam de volta. Em vez de expor um
+  controle que induz o usuário a erro, a UI foi retirada. O que continua no Painel 02
+  é o estado, a posição e `[] Silenciar saída`; no Painel 04 restam a referência e o
+  tile do arquivo, ambos apenas informativos.
+
+  **Os parâmetros APVTS e o motor de loop foram mantidos de propósito.**
+  `loopEnabled`, `loopStart`, `loopEnd`, `trainingSpeed` e `referencePitch` continuam
+  registrados, automáveis e gravados no estado do host, e o `FilePlayer` continua
+  aplicando o loop. Isso preserva presets já salvos, mantém o harness válido e evita
+  recriar parâmetros e migração de estado quando os controles voltarem.
 
 ### Corrigido
 

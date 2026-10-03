@@ -137,7 +137,9 @@ failed before.
 |---|-------|------------------------|---------------|
 | 1 | Plugin appears in MuseScore's plugin list | Present and enabled | Does not appear in the **instrument** container — declared gap **L2** |
 | 2 | Editor opens | The PartePlay window appears | — |
-| 3 | Transport: play, pause, seek, loop | No hang, no freeze, position tracks | The plugin hanging on MuseScore's transport is the failure load validation cannot see |
+| 3 | Transport: play, pause, seek | No hang, no freeze, position tracks | The plugin hanging on MuseScore's transport is the failure load validation cannot see |
+| 3a | Transport panel UI | Only `Estado`, `Posição` and `Silenciar saída` are present; the bar loop, training speed and manual A4 controls are absent | A removed control still showing means the bundle is stale — check `moduleinfo.json` reports `0.3.1` |
+| 3b | Mute toggle | Toggling it silences output and the state survives a host restart | — |
 | 4 | Export the `.mid`, import it into a score | Bars line up with the audio | `exportTempoMap` writes raw `getBpm()` (`PluginProcessor.cpp:332`), so half-time arrives as half tempo — declared gap **L1** |
 | 5 | Play the score and listen | Sync holds under the vocoder | No automated test covers audio fidelity at all |
 

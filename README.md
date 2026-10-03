@@ -91,11 +91,12 @@ is limited to compensating the tuning reference against the tuning detected in t
 
 - **Host-locked playback** — the audio follows the DAW/notation transport exactly; there is no
   internal clock to drift.
-- **Tuning reference** — the plugin detects the tuning of the source file (Hz) and lets you set the
-  reference (432–445 Hz, default A4 = 440 Hz). The playback ratio compensates the difference; it
+- **Tuning reference** — the plugin detects the tuning of the source file (Hz) and compensates it
+  against a fixed A4 = 440 Hz reference. The playback ratio compensates the difference; it
   uses the original buffer when the ratio is exactly 1.0.
 - **Training mode** — speed from 50% to 150% and a bar-based loop aligned to the detected meter,
-  keeping playback in sync.
+  keeping playback in sync. Both parameters stay registered and automatable, but their editor
+  controls are hidden in 0.3.1 (see [Parameters](#parameters)).
 - **Tempo analysis** — detected BPM, meter (3/4 or 4/4), bar count and tuning, with **MIDI 1.0**
   time-map export for MuseScore and DAWs. An optional external pipeline (`ffmpeg` + SoundStretch,
   bundled under `resources/bin/`) refines the tempo with a different algorithm than the native
@@ -266,22 +267,28 @@ loads the bundle.
 1. Open MuseScore 4 and add PartePlay as an effect.
 2. **Load audio** — WAV, FLAC, OGG or MP3.
 3. Confirm the BPM, meter and bar count; export the MIDI time map if you want the DAW to match.
-4. Set the **reference tuning** if your file is not A4 = 440 Hz (the plugin reports the detected
-   tuning; a ratio of 1.0 plays the original buffer untouched).
+4. The plugin reports the detected tuning and compensates it against A4 = 440 Hz automatically (a
+   ratio of 1.0 plays the original buffer untouched).
 5. Play: the track follows the host transport exactly.
-6. To study: lower **training speed** and/or enable a **bar loop**.
+6. The transport panel offers **mute output**; play, pause and seek stay under host control.
 
 ## Parameters
 
-| ID                      | Range / options             | Default |
-| ----------------------- | --------------------------- | ------- |
-| `referencePitch`        | 432.0 – 445.0 Hz (step 0.1) | 440.0   |
-| `trainingSpeed`         | 0.50 – 1.50 (step 0.01)     | 1.00    |
-| `loopEnabled`           | on / off                    | false   |
-| `loopStart` / `loopEnd` | 1 – 10000 (bar)             | 1       |
-| `muted`                 | silences local output       | false   |
+| ID                      | Range / options             | Default | Editor control |
+| ----------------------- | --------------------------- | ------- | -------------- |
+| `referencePitch`        | 432.0 – 445.0 Hz (step 0.1) | 440.0   | hidden in 0.3.1 |
+| `trainingSpeed`         | 0.50 – 1.50 (step 0.01)     | 1.00    | hidden in 0.3.1 |
+| `loopEnabled`           | on / off                    | false   | hidden in 0.3.1 |
+| `loopStart` / `loopEnd` | 1 – 10000 (bar)             | 1       | hidden in 0.3.1 |
+| `muted`                 | silences local output       | false   | mute toggle |
 
 All parameters are persisted in the host session and available for automation.
+
+In 0.3.1 the bar loop, training speed and manual A4 reference have **no editor control**: they
+never established a two-way link with the host transport, so the UI was withdrawn rather than
+exposing a control that misleads. The parameters and the loop engine are kept intact on purpose,
+so presets remain valid and the controls return in a later release once the host-side
+implementation exists. Reach them by automation or by loading a state that already sets them.
 
 ## Architecture
 
