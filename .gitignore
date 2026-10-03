@@ -69,8 +69,11 @@ agent.md
 *.internal.md
 
 # Rascunhos de divulgacao e respostas de redes sociais: material pessoal de
-# trabalho, nunca entra no repositorio nem em release.
+# trabalho, nunca entra no repositorio nem em release. O .docx entrou depois do
+# primeiro .md e nao era coberto pelo padrao, entao o arquivo de rascunho do
+# post da 0.3.1 aparecia como nao rastreado e entraria em qualquer `git add -A`.
 linkedin-*.md
+linkedin-*.docx
 social-*.md
 
 # Skills de prompts em Markdown. Sao material de trabalho do agente, nao do
