@@ -178,7 +178,7 @@ jobs:
           data = json.loads(pathlib.Path("artifacts.json").read_text(encoding="utf-8"))
           by_name = {a["name"]: a for a in data.get("artifacts", [])}
 
-          for required in ("PartePlay-Windows", "PartePlay-Ubuntu", "PartePlay-macOS-universal"):
+          for required in ("PartePlay-Windows", "PartePlay-Ubuntu"):
               a = by_name.get(required)
               if a is None:
                   sys.exit(f"::error::o artefato {required} nao existe neste run de CI")
@@ -222,7 +222,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p staging
-          for a in PartePlay-Windows PartePlay-Ubuntu PartePlay-macOS-universal; do
+          for a in PartePlay-Windows PartePlay-Ubuntu; do
             gh run download "$CI_RUN_ID" --name "$a" --dir "staging/$a"
             echo "  baixado: $a"
           done
@@ -243,13 +243,16 @@ jobs:
             mv "$zip" "dist/$destino"
             echo "  $destino  ($(du -h "dist/$destino" | cut -f1))"
           }
-          mover PartePlay-Windows         "PartePlay-${VERSION}-win-x64.zip"
-          mover PartePlay-Ubuntu          "PartePlay-${VERSION}-linux-x64.zip"
-          mover PartePlay-macOS-universal "PartePlay-${VERSION}-macos-universal.zip"
-          # O CI tambem produz PartePlay-macOS, que e o build na arquitetura do
-          # runner macos-14. O universal ja roda nativo nos dois, entao publicar
-          # os tres faria o usuario decidir entre dois arquivos que cobrem a
-          # mesma maquina. Fica de fora de proposito.
+          mover PartePlay-Windows "PartePlay-${VERSION}-win-x64.zip"
+          mover PartePlay-Ubuntu  "PartePlay-${VERSION}-linux-x64.zip"
+
+          # A release publica so Windows e Linux. Decisao de produto: o alvo do
+          # plugin e o MuseScore 4 nesses dois sistemas, e publicar um terceiro
+          # arquivo obriga o usuario a decidir entre dois que cobrem a mesma
+          # maquina. O CI continua compilando e testando macOS e macOS universal
+          # -- a regressao de shell do bash 3.2 so aparece la -- entao perder o
+          # artefato nao significa perder a cobertura. Quem quiser macOS compila
+          # da fonte pelo guia do README.
 
       # O bundle VST3 do Windows tem ~6,5 MB e NAO contem resources/bin: o
       # locateTools() procura resources/bin ao lado do executavel, ou seja
@@ -266,47 +269,16 @@ jobs:
           (cd resources && zip -r -q "$GITHUB_WORKSPACE/$out" bin)
           echo "  $(basename "$out")  ($(du -h "$out" | cut -f1))"
 
-      # Um bundle de macOS que nao seja universal passa despercebido ate o
-      # usuario abrir em um processador que ele nao cobre. O CI ja verifica
-      # com lipo no macOS, mas o binario e conferido de novo aqui, no arquivo
-      # que realmente vai para a pagina de release.
+      # A release nao publica macOS, entao o guard do universal sai daqui com
+      # o artefato. A cobertura NAO se perde: o ci.yml continua compilando e
+      # testando macOS e macOS universal, e e o job de macOS que confere o
+      # binario com lipo antes de gerar o artefato. O que este passo fazia era
+      # reconferir o MESMO arquivo depois de empacotar, num runner Linux onde
+      # lipo nao existe e o utilitario correto e o file.
       #
-      # "file", e nao "lipo": este job roda em ubuntu-latest, e lipo so existe
-      # no macOS. A primeira versao deste workflow usou lipo e morreu com
-      # "lipo: command not found" -- o guard fez o que devia, barrou em vez de
-      # anexar as Duarte as cegas, mas a ferramenta estava errada. "file" ja vem
-      # no runner e le as duas arquiteturas de um Mach-O universal:
-      #   Mach-O universal binary with 2 architectures:
-      #     [x86_64:...] [arm64:...]
-      #
-      # As duas arquiteturas sao procuradas em case separados, de proposito. Um
-      # glob ordenado ("*x86_64*arm64*") reprova quando o file imprime as fatias
-      # na ordem inversa, e a ordem nao e garantida -- o build universal do CI
-      # pode emitting qualquer um dos dois primeiros.
-      - name: O bundle universal e universal mesmo?
-        run: |
-          set -euo pipefail
-          tmp=$(mktemp -d)
-          unzip -q "./dist/PartePlay-${VERSION}-macos-universal.zip" -d "$tmp"
-          bin=$(find "$tmp" -path '*Contents/MacOS/*' -type f | head -1)
-          test -n "$bin" || { echo "::error::binario do bundle universal nao encontrado"; exit 1; }
-          info=$(file -b "$bin")
-          echo "$info"
-
-          case "$info" in
-            *"universal binary"*) ;;
-            *) echo "::error::o bundle nao e universal: o usuario abriria no processador errado"; exit 1 ;;
-          esac
-          case "$info" in
-            *x86_64*) ;;
-            *) echo "::error::universal sem x86_64 (Intel)"; exit 1 ;;
-          esac
-          case "$info" in
-            *arm64*) ;;
-            *) echo "::error::universal sem arm64 (Apple Silicon)"; exit 1 ;;
-          esac
-          echo "  ok: x86_64 + arm64"
-          rm -rf "$tmp"
+      # Se um dia o macOS voltar a ser publicado, o passo volta junto -- e ele
+      # precisa voltar: um bundle que nao seja universal passa despercebido ate
+      # o usuario abrir num processador que ele nao cobre.
 
       # O GitHub ja mostra um digest por asset na propria pagina. O arquivo
       # .sha256 existe por outro motivo: da para conferir com um comando

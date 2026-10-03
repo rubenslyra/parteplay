@@ -16,10 +16,10 @@
 
 A VST3 plugin that plays a **reference audio track in sync with the host transport** — so you
 practice along with the real performance instead of a metronome. It works with MuseScore 4 or any
-DAW, supports **training speed and bar-based looping**, computes a **local audio fingerprint**
-(Chromaprint/AcoustID-compatible), and is **fully localized** in pt-BR, en-GB, en-US and es-ES.
+DAW, computes a **local audio fingerprint** (Chromaprint/AcoustID-compatible), and is **fully
+localized** in pt-BR, en-GB, en-US and es-ES.
 
-**Version:** 0.3.0 · **Platform:** Windows 10/11, Ubuntu, macOS (CI-verified build matrix) · **Format:** VST3 · **Stack:** C++17 / JUCE 9.0.2 / CMake
+**Version:** 0.3.1 · **Prebuilt for:** Windows 10/11 and Ubuntu · **Also built and tested by CI for:** macOS 14+ (build from source) · **Format:** VST3 · **Stack:** C++17 / JUCE 9.0.2 / CMake
 
 <p align="center">
   <img src="docs/parteplay-logo.png" width="170" alt="PartePlay">
@@ -27,23 +27,27 @@ DAW, supports **training speed and bar-based looping**, computes a **local audio
 
 ## Download
 
-**0.3.0 ships binaries.** Each one was built and tested by CI on the same commit the `v0.3.0` tag
-points at — that is the point of the packaging: the artifact you download is the artifact the
-four-platform matrix compiled, not a rebuild from someone else's machine.
+**0.3.1 ships Windows and Linux binaries.** Each one was built and tested by CI on the same commit
+the `v0.3.1` tag points at — that is the point of the packaging: the artifact you download is the
+artifact the matrix compiled, not a rebuild from someone else's machine.
 
 | Platform | Architecture | File |
 |---|---|---|
-| Windows | x86-64 | `PartePlay-0.3.0-win-x64.zip` |
-| macOS | universal (Intel + Apple Silicon) | `PartePlay-0.3.0-macos-universal.zip` |
-| Linux | x86-64 | `PartePlay-0.3.0-linux-x64.zip` |
+| Windows | x86-64 | `PartePlay-0.3.1-win-x64.zip` |
+| Linux | x86-64 | `PartePlay-0.3.1-linux-x64.zip` |
 
-**[⬇ Download from the v0.3.0 release](https://github.com/rubenslyra/parteplay/releases/tag/v0.3.0)**
+**[⬇ Download from the v0.3.1 release](https://github.com/rubenslyra/parteplay/releases/tag/v0.3.1)**
+
+**No prebuilt macOS binary since 0.3.1.** CI still compiles and tests macOS and macOS universal on
+every push — the bash 3.2 regression only shows up there — so macOS stays verified, it just is not
+attached to the release. To get it, [build from source](#build); the presets and the install paths
+are in [Install](#install). The `v0.3.0` release still carries the last macOS universal zip.
 
 Every asset has a `.sha256` file, and the release carries a `SHA256SUMS.txt` covering all of them:
 
 ```bash
-sha256sum -c SHA256SUMS.txt          # Linux / macOS
-Get-FileHash .\PartePlay-0.3.0-win-x64.zip   # Windows
+sha256sum -c SHA256SUMS.txt          # Linux
+Get-FileHash .\PartePlay-0.3.1-win-x64.zip   # Windows
 ```
 
 ### Optional: the external tempo tools (Windows)
