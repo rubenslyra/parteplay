@@ -1059,52 +1059,10 @@ public:
         addAndMakeVisible (stateTile);
         addAndMakeVisible (positionTile);
 
-        loopToggle.setToggleState (p.isLoopEnabled(), juce::dontSendNotification);
-        addAndMakeVisible (loopToggle);
-        loopToggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
-            p.parameters, Parameter::loopEnabled, loopToggle);
-
         muteToggle.setToggleState (p.isOutputMuted(), juce::dontSendNotification);
         addAndMakeVisible (muteToggle);
         muteToggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
             p.parameters, Parameter::muted, muteToggle);
-
-        styleCaption (loopStartLabel);
-        addAndMakeVisible (loopStartLabel);
-        styleSlider (loopStartSlider);
-        loopStartSlider.setRange (1.0, 8.0, 1.0);
-        addAndMakeVisible (loopStartSlider);
-        styleMono (loopStartValue);
-        loopStartValue.setJustificationType (juce::Justification::centredRight);
-        addAndMakeVisible (loopStartValue);
-        loopStartAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
-            p.parameters, Parameter::loopStart, loopStartSlider);
-
-        styleCaption (loopEndLabel);
-        addAndMakeVisible (loopEndLabel);
-        styleSlider (loopEndSlider);
-        loopEndSlider.setRange (1.0, 8.0, 1.0);
-        addAndMakeVisible (loopEndSlider);
-        styleMono (loopEndValue);
-        loopEndValue.setJustificationType (juce::Justification::centredRight);
-        addAndMakeVisible (loopEndValue);
-        loopEndAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
-            p.parameters, Parameter::loopEnd, loopEndSlider);
-
-        styleCaption (speedLabel);
-        addAndMakeVisible (speedLabel);
-        styleSlider (speedSlider);
-        speedSlider.setRange (50.0, 150.0, 1.0);
-        addAndMakeVisible (speedSlider);
-        styleMono (speedValue);
-        speedValue.setJustificationType (juce::Justification::centredRight);
-        addAndMakeVisible (speedValue);
-        speedAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
-            p.parameters, Parameter::trainingSpeed, speedSlider);
-
-        styleCaption (noteLabel);
-        noteLabel.setColour (juce::Label::textColourId, Theme::muted.withAlpha (0.85f));
-        addAndMakeVisible (noteLabel);
 
         refreshTexts();
         refreshState();
@@ -1113,13 +1071,7 @@ public:
     void refreshTexts() override
     {
         title = Text::t ("02 / Transporte");
-        loopToggle.setButtonText (Text::t ("Repetir trecho"));
         muteToggle.setButtonText (Text::t ("Silenciar saída"));
-        loopStartLabel.setText (Text::t ("Início (compasso)"), juce::dontSendNotification);
-        loopEndLabel.setText (Text::t ("Fim (compasso)"), juce::dontSendNotification);
-        speedLabel.setText (Text::t ("Velocidade (treino)"), juce::dontSendNotification);
-        noteLabel.setText (Text::t ("Play, pause e busca são controlados pelo hospedeiro."),
-                           juce::dontSendNotification);
         repaint();
     }
 
@@ -1159,30 +1111,11 @@ public:
             : 0.0;
 
         positionTile.setContent (Text::t ("Posição"), Text::timePrecise (position), Theme::foreground);
-
-        const auto measures = juce::jmax (2, processor.getMeasureCount());
-
-        if (static_cast<int> (loopStartSlider.getMaximum()) != measures)
-            loopStartSlider.setRange (1.0, static_cast<double> (measures), 1.0);
-        if (static_cast<int> (loopEndSlider.getMaximum()) != measures)
-            loopEndSlider.setRange (1.0, static_cast<double> (measures), 1.0);
-
-        loopStartValue.setText (juce::String (processor.getLoopStartMeasure()), juce::dontSendNotification);
-        loopEndValue.setText (juce::String (processor.getLoopEndMeasure()), juce::dontSendNotification);
-        speedValue.setText (juce::String (processor.getTrainingSpeed() * 100.0, 0) + Text::t (" %"),
-                            juce::dontSendNotification);
-
-        const bool loopControls = processor.isLoopEnabled();
-        loopStartSlider.setEnabled (loopControls);
-        loopEndSlider.setEnabled (loopControls);
-        loopStartLabel.setEnabled (loopControls);
-        loopEndLabel.setEnabled (loopControls);
     }
 
     void paint (juce::Graphics& g) override
     {
-        auto content = paintChrome (g, title);
-        Theme::paintRule (g, content.removeFromBottom (34).toFloat().removeFromTop (1.0f));
+        paintChrome (g, title);
     }
 
     void resized() override
@@ -1201,73 +1134,17 @@ public:
         auto toggles = takeTop (area, 28);
         juce::FlexBox toggleRow;
         toggleRow.flexDirection = juce::FlexBox::Direction::row;
-        toggleRow.items.add (juce::FlexItem (loopToggle).withFlex (1.0f).withMargin (juce::FlexItem::Margin (0, 4, 0, 0)));
         toggleRow.items.add (juce::FlexItem (muteToggle).withFlex (1.0f).withMargin (juce::FlexItem::Margin (0, 0, 0, 4)));
         toggleRow.performLayout (toggles);
-
-        space (area, 10);
-
-        // A nota cede primeiro: e explicativa, e nao comando. Os 10px seguintes
-        // sao a folga da linha divisoria desenhada em paint(), que fica logo acima
-        // dela.
-        const auto noteBounds = takeBottom (area, 24);
-        space (area, 10);
-        place (noteLabel, noteBounds);
-
-        // As tres linhas dividem o que sobrar, entao em janela grande ficam mais
-        // altas. O piso de 22px e onde o slider e o valor ainda se leem, e e o que
-        // garante que a ultima linha ("Fim (compasso)") nunca seja cortada pela
-        // metade - o defeito original era ela receber os 5px que restavam.
-        const int rowGap    = 6;
-        const int rowHeight = juce::jlimit (22, 30, (area.getHeight() - rowGap * 2) / 3);
-
-        layoutRow (speedLabel, speedSlider, speedValue, takeTop (area, rowHeight));
-        space (area, rowGap);
-        layoutRow (loopStartLabel, loopStartSlider, loopStartValue, takeTop (area, rowHeight));
-        space (area, rowGap);
-        layoutRow (loopEndLabel, loopEndSlider, loopEndValue, takeTop (area, rowHeight));
     }
 
 private:
-    void layoutRow (juce::Component& caption, juce::Component& slider, juce::Component& value,
-                    juce::Rectangle<int> row)
-    {
-        const int captionWidth = 132;
-        const int valueWidth   = 52;
-
-        if (row.isEmpty())
-        {
-            caption.setVisible (false);
-            slider.setVisible (false);
-            value.setVisible (false);
-            return;
-        }
-
-        caption.setVisible (true);
-        slider.setVisible (true);
-        value.setVisible (true);
-
-        caption.setBounds (row.removeFromLeft (captionWidth));
-        value.setBounds (row.removeFromRight (valueWidth));
-        row.removeFromRight (10);
-        slider.setBounds (row);
-    }
-
     juce::String title;
     StatTile stateTile;
     StatTile positionTile;
-    juce::ToggleButton loopToggle;
     juce::ToggleButton muteToggle;
-    juce::Label loopStartLabel, loopEndLabel, speedLabel;
-    juce::Slider loopStartSlider, loopEndSlider, speedSlider;
-    juce::Label loopStartValue, loopEndValue, speedValue;
-    juce::Label noteLabel;
 
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> loopToggleAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> muteToggleAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> loopStartAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> loopEndAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> speedAttachment;
 };
 
 //==============================================================================
@@ -1563,26 +1440,6 @@ public:
         referenceValue.setJustificationType (juce::Justification::centredRight);
         addAndMakeVisible (referenceValue);
 
-        styleSlider (pitchSlider);
-        pitchSlider.setRange (Tuning::minReferenceHz, Tuning::maxReferenceHz, 0.1);
-        addAndMakeVisible (pitchSlider);
-        pitchAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
-            p.parameters, Parameter::referencePitch, pitchSlider);
-
-        styleMono (pitchMinLabel);
-        pitchMinLabel.setText (juce::String ((int) Tuning::minReferenceHz), juce::dontSendNotification);
-        addAndMakeVisible (pitchMinLabel);
-        styleMono (pitchMaxLabel);
-        pitchMaxLabel.setText (juce::String ((int) Tuning::maxReferenceHz), juce::dontSendNotification);
-        pitchMaxLabel.setJustificationType (juce::Justification::centredRight);
-        addAndMakeVisible (pitchMaxLabel);
-
-        resetButton.onClick = [this]
-        {
-            pitchSlider.setValue (Tuning::defaultReferenceHz);
-        };
-        addAndMakeVisible (resetButton);
-
         addAndMakeVisible (fileTuningTile);
 
         refreshTexts();
@@ -1593,7 +1450,6 @@ public:
     {
         title = Text::t ("04 / Afinação");
         referenceCaption.setText (Text::t ("Referência · A4"), juce::dontSendNotification);
-        resetButton.setButtonText (Text::t ("Restaurar 440 Hz"));
         repaint();
     }
 
@@ -1629,17 +1485,6 @@ public:
 
         space (area, 8);
 
-        auto sliderRow = takeTop (area, 22);
-        pitchMinLabel.setBounds (sliderRow.removeFromLeft (30));
-        pitchMaxLabel.setBounds (sliderRow.removeFromRight (30));
-        sliderRow.removeFromLeft (8);
-        sliderRow.removeFromRight (8);
-        pitchSlider.setBounds (sliderRow);
-
-        space (area, 6);
-        place (resetButton, takeTop (area, 28).removeFromLeft (150));
-        space (area, 8);
-
         // O tile de afinacao do arquivo e informativo: e o que cede em janela
         // menor, antes de qualquer controle.
         if (area.getHeight() >= 48)
@@ -1653,12 +1498,7 @@ private:
     RingView ring;
     juce::Label referenceCaption;
     juce::Label referenceValue;
-    juce::Slider pitchSlider;
-    juce::Label pitchMinLabel, pitchMaxLabel;
-    juce::TextButton resetButton;
     StatTile fileTuningTile;
-
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> pitchAttachment;
 };
 
 //==============================================================================
