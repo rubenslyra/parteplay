@@ -45,6 +45,21 @@ Enquanto isso, os parâmetros `loopEnabled`, `loopStart`, `loopEnd`,
 `trainingSpeed` e `referencePitch` seguem registrados e automáveis — alcançáveis
 por automação ou por um estado que já os grave.
 
+### Mudado
+
+- **A release passa a anexar só Windows e Linux.** O alvo do plugin é o
+  MuseScore 4 nesses dois sistemas, e publicar um terceiro arquivo obrigava o
+  usuário a escolher entre dois que cobrem a mesma máquina. A 0.3.0 ainda tem o
+  `macos-universal`; a partir daqui não.
+
+  **A cobertura de macOS não foi perdida.** A CI continua compilando e testando
+  macOS e macOS universal a cada push — a regressão de shell do `bash 3.2` só
+  aparece lá, e foi o que o gate local de shell existe para pegar. Perde-se o
+  *artefato*, não o *teste*. Quem quiser macOS compila da fonte; os presets e os
+  caminhos de instalação continuam no README. O guard que reconferia o bundle
+  universal com `file` saiu do `release.yml` junto com o artefato, e volta se o
+  macOS voltar a ser publicado.
+
 ### Removido
 
 - **Os controles de loop de trecho, velocidade de treino e referência manual de
