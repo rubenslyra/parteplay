@@ -73,6 +73,27 @@ agent.md
 linkedin-*.md
 social-*.md
 
+# Skills de prompts em Markdown. Sao material de trabalho do agente, nao do
+# produto: nao seguem o formato de skill do OpenCode (frontmatter name +
+# description em .skills/<slug>/SKILL.md) e nao sao consumidas por nenhum
+# script do repositorio. Versiona-las no repo de produto misturaria material
+# de autoria com o codigo entregue em release.
+.skills/
+
+# Diario de sessao e a analise visual do estado atual vs. as branches de
+# intervencao. Material de trabalho local: o diario muda a cada sessao e a
+# analise e um documento datado que so faz sentido para quem o produziu.
+# Motivo pratico alem do editorial: os dois entram em conflito de merge com
+# qualquer PR que toque no mesmo dia e geram alerta de "arquivo modificado"
+# que nao corresponde a trabalho em andamento.
+#
+# ATENCAO: CONTINUACAO.md ja estava versionado. So este bloco nao impede o
+# git de exibir alteracoes nele. Para isso e preciso tb desvincular o arquivo
+# do indice (git rm --cached CONTINUACAO.md) ou marcar com
+# git update-index --skip-worktree CONTINUACAO.md. Ver o final de CONTINUACAO.md.
+CONTINUACAO.md
+analise-local/
+
 # Binarios da pipeline externa de andamento. A regra geral acima ignora
 # *.exe/*.dll, mas estes sao versionados de proposito: o localizador
 # (Source/Analysis/ExternalBpm.cpp) procura resources/bin em tempo de execucao e
