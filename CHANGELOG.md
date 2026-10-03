@@ -4,13 +4,13 @@ Todas as mudanças relevantes do PartePlay. O formato segue
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o versionamento é
 [SemVer](https://semver.org/lang/pt-BR/).
 
-## [Não publicado]
+## [0.3.1] — 2026-10-03
 
-Próxima versão: **0.3.1**, correção de defeito. A funcionalidade que depende do
-host — o aviso de atualização via manifesto assinado pela CI e o retorno do Repeat
-com link bidirecional com o transporte — fica para a **0.4.0**. A regra está em
-`CONTRIBUTING.md` e o número mora só em `project(PartePlay VERSION x.y.z)`, no
-`CMakeLists.txt`.
+Correção de defeito. Versionamento por SemVer, regra em `CONTRIBUTING.md`, e o
+número mora só em `project(PartePlay VERSION x.y.z)`, no `CMakeLists.txt`.
+
+**Os binários desta versão são Windows e Linux.** A 0.3.0 ainda anexa
+`macos-universal`; a partir daqui não. O CI continua testando macOS.
 
 ### Por que esta versão existe
 
