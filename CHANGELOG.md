@@ -12,6 +12,39 @@ com link bidirecional com o transporte — fica para a **0.4.0**. A regra está 
 `CONTRIBUTING.md` e o número mora só em `project(PartePlay VERSION x.y.z)`, no
 `CMakeLists.txt`.
 
+### Por que esta versão existe
+
+**Um controle que não conversa com o host é pior do que nenhum controle.** O host
+conduz o áudio; o Repeat de compasso, a velocidade de treino e a afinação manual
+nunca escreveram de volta para o MuseScore. Quem arrastava o slider de velocidade
+via um estado antigo, ou via automação, ouvia o áudio continuar na velocidade do
+host e não tinha como saber por quê: o painel parecia funcionar e não funcionava.
+
+Isso não é regressão introduzida agora. O transporte nunca teve caminho de
+volta: `PluginProcessor.h` guarda só `transportPlaying`, `transportSample` e
+`transportSampleRate`, todos atômicos de leitura, e não existe um único
+`setTransport`, `setLoopPoints` ou `setPosition` no `Source/`. O Repeat era
+aplicado só dentro do `FilePlayer`. E nenhuma build automatizada pegaria isso: o
+harness valida que o bundle carrega e que o áudio sai, não que um botão
+signifique alguma coisa para o hospedeiro. A escolha foi **retirar a UI em vez de
+manter o controle**. Os parâmetros e o motor de loop continuam de pé, de propósito:
+é o que permite que os controles voltem sem recriar parâmetro, sem quebrar preset e
+sem migração de estado.
+
+### Planejado — sprint de 07/10/2026 a 28/10/2026
+
+**Aviso:** o trabalho começa em **07/10/2026** e a entrega é prevista para o
+**fim da sprint, em 28/10/2026**. Nada abaixo está na 0.3.1; o alvo é a 0.4.0.
+
+| Item | O que é | Por que está na fila |
+|---|---|---|
+| **Repeat com link real com o host** | playhead, seleção de compasso e loop gravados de volta no score, nos dois sentidos | É o defeito que a 0.3.1 contorna retirando a UI. Sem isso o controle não pode voltar |
+| **Aviso de nova versão** | manifesto assinado, gerado pela CI e lido do plugin do disco | Sem token no VST3, sem rede obrigatória e funcionando offline |
+
+Enquanto isso, os parâmetros `loopEnabled`, `loopStart`, `loopEnd`,
+`trainingSpeed` e `referencePitch` seguem registrados e automáveis — alcançáveis
+por automação ou por um estado que já os grave.
+
 ### Removido
 
 - **Os controles de loop de trecho, velocidade de treino e referência manual de

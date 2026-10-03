@@ -290,6 +290,19 @@ exposing a control that misleads. The parameters and the loop engine are kept in
 so presets remain valid and the controls return in a later release once the host-side
 implementation exists. Reach them by automation or by loading a state that already sets them.
 
+## Coming next — sprint of 07/10/2026 to 28/10/2026
+
+> **Heads-up:** work starts on **07/10/2026** and is planned for delivery at the **end of the
+> sprint, on 28/10/2026**. None of this is in 0.3.1 — it targets **0.4.0**.
+
+| Item | What it is | Why it is queued |
+| --- | --- | --- |
+| **Repeat with a real link to the host** | playhead, bar selection and loop written back to the score, in both directions | This is the defect 0.3.1 works around by removing the UI. The control cannot come back before this exists |
+| **New version notice** | a manifest signed by CI and read from disk by the plugin | No token inside the VST3, no network required, works offline |
+
+Until then the five parameters above stay registered and automatable, so nothing is lost while
+the host-side work happens.
+
 ## Architecture
 
 `Source/` is grouped by **module**, not by layer or by file type. Each folder answers one
@@ -420,6 +433,19 @@ review and measurement across several releases.
 The 6 kHz measurement is the clearest case of what this project gains from
 collaboration: a specific, falsifiable observation that decided what got
 investigated next.
+
+**An open question from the maintainer, sent to Thiago on 02/10/2026 — his reply is
+not recorded here yet.** The 0.3.1 release withdraws the bar loop, training speed
+and manual A4 controls from the editor. They never wrote back to the MuseScore
+transport, so a control that looked live was not. The parameters and the loop
+engine stay in place, and the plan for the sprint of 07/10/2026 to 28/10/2026 is
+to make the Repeat genuinely bidirectional before those controls come back. That
+design is the part worth arguing about: which way the round trip should go,
+whether the bar selection belongs in the score or in the plugin, and what the
+host exposes that is reliable enough to depend on. **Thiago — the transposition
+table you asked for is already in interval-plus-octave form and tested per
+instrument; if you can test the loop behaviour in 4.7.5 and tell me what the host
+actually reports, that measurement decides the 0.4.0 design.**
 
 ---
 
