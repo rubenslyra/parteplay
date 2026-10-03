@@ -16,10 +16,10 @@
 
 A VST3 plugin that plays a **reference audio track in sync with the host transport** — so you
 practice along with the real performance instead of a metronome. It works with MuseScore 4 or any
-DAW, supports **training speed and bar-based looping**, computes a **local audio fingerprint**
-(Chromaprint/AcoustID-compatible), and is **fully localized** in pt-BR, en-GB, en-US and es-ES.
+DAW, computes a **local audio fingerprint** (Chromaprint/AcoustID-compatible), and is **fully
+localized** in pt-BR, en-GB, en-US and es-ES.
 
-**Version:** 0.3.0 · **Platform:** Windows 10/11, Ubuntu, macOS (CI-verified build matrix) · **Format:** VST3 · **Stack:** C++17 / JUCE 9.0.2 / CMake
+**Version:** 0.3.1 · **Prebuilt for:** Windows 10/11 and Ubuntu · **Also built and tested by CI for:** macOS 14+ (build from source) · **Format:** VST3 · **Stack:** C++17 / JUCE 9.0.2 / CMake
 
 <p align="center">
   <img src="docs/parteplay-logo.png" width="170" alt="PartePlay">
@@ -27,23 +27,27 @@ DAW, supports **training speed and bar-based looping**, computes a **local audio
 
 ## Download
 
-**0.3.0 ships binaries.** Each one was built and tested by CI on the same commit the `v0.3.0` tag
-points at — that is the point of the packaging: the artifact you download is the artifact the
-four-platform matrix compiled, not a rebuild from someone else's machine.
+**0.3.1 ships Windows and Linux binaries.** Each one was built and tested by CI on the same commit
+the `v0.3.1` tag points at — that is the point of the packaging: the artifact you download is the
+artifact the matrix compiled, not a rebuild from someone else's machine.
 
 | Platform | Architecture | File |
 |---|---|---|
-| Windows | x86-64 | `PartePlay-0.3.0-win-x64.zip` |
-| macOS | universal (Intel + Apple Silicon) | `PartePlay-0.3.0-macos-universal.zip` |
-| Linux | x86-64 | `PartePlay-0.3.0-linux-x64.zip` |
+| Windows | x86-64 | `PartePlay-0.3.1-win-x64.zip` |
+| Linux | x86-64 | `PartePlay-0.3.1-linux-x64.zip` |
 
-**[⬇ Download from the v0.3.0 release](https://github.com/rubenslyra/parteplay/releases/tag/v0.3.0)**
+**[⬇ Download from the v0.3.1 release](https://github.com/rubenslyra/parteplay/releases/tag/v0.3.1)**
+
+**No prebuilt macOS binary since 0.3.1.** CI still compiles and tests macOS and macOS universal on
+every push — the bash 3.2 regression only shows up there — so macOS stays verified, it just is not
+attached to the release. To get it, [build from source](#build); the presets and the install paths
+are in [Install](#install). The `v0.3.0` release still carries the last macOS universal zip.
 
 Every asset has a `.sha256` file, and the release carries a `SHA256SUMS.txt` covering all of them:
 
 ```bash
-sha256sum -c SHA256SUMS.txt          # Linux / macOS
-Get-FileHash .\PartePlay-0.3.0-win-x64.zip   # Windows
+sha256sum -c SHA256SUMS.txt          # Linux
+Get-FileHash .\PartePlay-0.3.1-win-x64.zip   # Windows
 ```
 
 ### Optional: the external tempo tools (Windows)
@@ -91,11 +95,12 @@ is limited to compensating the tuning reference against the tuning detected in t
 
 - **Host-locked playback** — the audio follows the DAW/notation transport exactly; there is no
   internal clock to drift.
-- **Tuning reference** — the plugin detects the tuning of the source file (Hz) and lets you set the
-  reference (432–445 Hz, default A4 = 440 Hz). The playback ratio compensates the difference; it
+- **Tuning reference** — the plugin detects the tuning of the source file (Hz) and compensates it
+  against a fixed A4 = 440 Hz reference. The playback ratio compensates the difference; it
   uses the original buffer when the ratio is exactly 1.0.
 - **Training mode** — speed from 50% to 150% and a bar-based loop aligned to the detected meter,
-  keeping playback in sync.
+  keeping playback in sync. Both parameters stay registered and automatable, but their editor
+  controls are hidden in 0.3.1 (see [Parameters](#parameters)).
 - **Tempo analysis** — detected BPM, meter (3/4 or 4/4), bar count and tuning, with **MIDI 1.0**
   time-map export for MuseScore and DAWs. An optional external pipeline (`ffmpeg` + SoundStretch,
   bundled under `resources/bin/`) refines the tempo with a different algorithm than the native
@@ -179,6 +184,43 @@ not by ear:
 `install-vst3.ps1` runs this suite before installing and aborts on any failure
 (`-SkipTests` to ignore).
 
+### What the VST3 load harness covers
+
+The suite above tests the domain in isolation. A second, separate executable loads the
+**published bundle** through `juce::VST3PluginFormatHeadless` — no GUI, no audio device — and
+runs as a step of CI *after* packaging, because the bundle only exists once it is packaged:
+
+```powershell
+cmake --build build\msvc-2026 --config Release --target PartePlayHarness
+.\build\msvc-2026\PartePlayHarness_artefacts\Release\PartePlayHarness.exe `
+  .\build\msvc-2026\PartePlay_artefacts\Release\VST3\PartePlay.vst3
+```
+
+`$env:PARTEPLAY_HARNESS_VERBOSE = "1"` includes the plugin's own stdout. Exit `0` passes,
+`5` means the negative case was rejected as intended, `99` is an unhandled exception.
+
+The pipeline is configured to run it in four jobs — Windows, Ubuntu, macOS and macOS universal —
+against the **extracted ZIP** rather than the build tree, so a packaging fault fails the build.
+That configuration is new and has not yet run on all four platforms; Windows is the only one
+verified so far.
+
+| Layer                                              | Covered by                              | Automated? |
+| -------------------------------------------------- | --------------------------------------- | ---------- |
+| Musical domain, text, fingerprinting               | `ctest` (461 checks)                    | Yes        |
+| The ZIP unzips to exactly one `PartePlay.vst3`     | load harness, in CI                     | Yes        |
+| Bundle loads, instantiates, initialises, processes  | load harness, in CI                     | Yes        |
+| A corrupt binary is rejected, not silently accepted | load harness, in CI                     | Yes        |
+| Parameters are discovered and enumerated            | load harness, in CI                     | Yes        |
+| The plugin survives the tempo tools being **absent** | load harness, in CI                     | Yes        |
+| **Audio fidelity — sync under stretch, vocoder**   | —                                       | **No**     |
+| **`locateTools()` actually finds ffmpeg/soundstretch** | —                                    | **No**     |
+| **Tempo/MIDI sync inside a real host**             | —                                       | **No**     |
+| **The plugin appears in MuseScore's instrument list** | —                                     | **No**     |
+
+The last four are the reason a manual pass still matters. The harness proves the plugin
+**loads and survives being told to process**; it cannot prove it sounds right, keeps time, finds
+its external tools, or that MuseScore can see it. See [`DEBUG.md`](DEBUG.md) for the manual pass.
+
 ## Install
 
 Close MuseScore (or the DAW) before installing — the binary is locked while the plugin is loaded.
@@ -229,22 +271,41 @@ loads the bundle.
 1. Open MuseScore 4 and add PartePlay as an effect.
 2. **Load audio** — WAV, FLAC, OGG or MP3.
 3. Confirm the BPM, meter and bar count; export the MIDI time map if you want the DAW to match.
-4. Set the **reference tuning** if your file is not A4 = 440 Hz (the plugin reports the detected
-   tuning; a ratio of 1.0 plays the original buffer untouched).
+4. The plugin reports the detected tuning and compensates it against A4 = 440 Hz automatically (a
+   ratio of 1.0 plays the original buffer untouched).
 5. Play: the track follows the host transport exactly.
-6. To study: lower **training speed** and/or enable a **bar loop**.
+6. The transport panel offers **mute output**; play, pause and seek stay under host control.
 
 ## Parameters
 
-| ID                      | Range / options             | Default |
-| ----------------------- | --------------------------- | ------- |
-| `referencePitch`        | 432.0 – 445.0 Hz (step 0.1) | 440.0   |
-| `trainingSpeed`         | 0.50 – 1.50 (step 0.01)     | 1.00    |
-| `loopEnabled`           | on / off                    | false   |
-| `loopStart` / `loopEnd` | 1 – 10000 (bar)             | 1       |
-| `muted`                 | silences local output       | false   |
+| ID                      | Range / options             | Default | Editor control |
+| ----------------------- | --------------------------- | ------- | -------------- |
+| `referencePitch`        | 432.0 – 445.0 Hz (step 0.1) | 440.0   | hidden in 0.3.1 |
+| `trainingSpeed`         | 0.50 – 1.50 (step 0.01)     | 1.00    | hidden in 0.3.1 |
+| `loopEnabled`           | on / off                    | false   | hidden in 0.3.1 |
+| `loopStart` / `loopEnd` | 1 – 10000 (bar)             | 1       | hidden in 0.3.1 |
+| `muted`                 | silences local output       | false   | mute toggle |
 
 All parameters are persisted in the host session and available for automation.
+
+In 0.3.1 the bar loop, training speed and manual A4 reference have **no editor control**: they
+never established a two-way link with the host transport, so the UI was withdrawn rather than
+exposing a control that misleads. The parameters and the loop engine are kept intact on purpose,
+so presets remain valid and the controls return in a later release once the host-side
+implementation exists. Reach them by automation or by loading a state that already sets them.
+
+## Coming next — sprint of 07/10/2026 to 28/10/2026
+
+> **Heads-up:** work starts on **07/10/2026** and is planned for delivery at the **end of the
+> sprint, on 28/10/2026**. None of this is in 0.3.1 — it targets **0.4.0**.
+
+| Item | What it is | Why it is queued |
+| --- | --- | --- |
+| **Repeat with a real link to the host** | playhead, bar selection and loop written back to the score, in both directions | This is the defect 0.3.1 works around by removing the UI. The control cannot come back before this exists |
+| **New version notice** | a manifest signed by CI and read from disk by the plugin | No token inside the VST3, no network required, works offline |
+
+Until then the five parameters above stay registered and automatable, so nothing is lost while
+the host-side work happens.
 
 ## Architecture
 
@@ -310,7 +371,8 @@ Structural decisions worth knowing:
   `TempoAnalyser` does the work on its own — which is the intended behaviour, not a defect. Tools
   can also be pointed elsewhere with the `PARTEPLAY_TOOLS_DIR` environment variable.
 - The audio path itself (sync under time-stretch, vocoder) has no automated tests and still relies
-  on host validation.
+  on host validation. The load harness proves the plugin loads, instantiates and processes, not
+  that it sounds correct — see the coverage table under [Tests](#tests).
 
 ## Documentation
 
@@ -353,6 +415,41 @@ licence; whether PartePlay ships a commercial edition is an open product decisio
 
 - GitHub: [github.com/rubenslyra/parteplay](https://github.com/rubenslyra/parteplay)
 - LinkedIn: [linkedin.com/in/rubenslyra](https://www.linkedin.com/in/rubenslyra)
+
+---
+
+## Acknowledgments
+
+**Thiago Gonçalves** ([LinkedIn](https://www.linkedin.com/in/thiago-g/)) — unprompted
+review and measurement across several releases.
+
+- Read `release/0.2.2` and reported that the tuning correction was still routed
+  through the vocoder, and that `exportTempoMap` writes the raw `getBpm()`. Both
+  remain open and tracked.
+- Measured the tuning error against carrier frequency at the 17-cent limit:
+  100% at 2 kHz, 93% at 4 kHz, **0.9% at 6 kHz**. That measurement is what turned
+  "the high end sounds wrong" into a defect locatable in the phase accumulator.
+- Reported that an E♭ instrument transposed **+3 semitones instead of −9** — the
+  same pitch class, the wrong octave, and it passed by ear. Fixed on 27/09/2026.
+- Asked for the transposition table in interval-plus-octave form, tested per
+  instrument. That is the format this project uses.
+
+The 6 kHz measurement is the clearest case of what this project gains from
+collaboration: a specific, falsifiable observation that decided what got
+investigated next.
+
+**An open question from the maintainer, sent to Thiago on 02/10/2026 — his reply is
+not recorded here yet.** The 0.3.1 release withdraws the bar loop, training speed
+and manual A4 controls from the editor. They never wrote back to the MuseScore
+transport, so a control that looked live was not. The parameters and the loop
+engine stay in place, and the plan for the sprint of 07/10/2026 to 28/10/2026 is
+to make the Repeat genuinely bidirectional before those controls come back. That
+design is the part worth arguing about: which way the round trip should go,
+whether the bar selection belongs in the score or in the plugin, and what the
+host exposes that is reliable enough to depend on. **Thiago — the transposition
+table you asked for is already in interval-plus-octave form and tested per
+instrument; if you can test the loop behaviour in 4.7.5 and tell me what the host
+actually reports, that measurement decides the 0.4.0 design.**
 
 ---
 

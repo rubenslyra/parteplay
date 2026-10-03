@@ -2,7 +2,7 @@
 
 # Versao do projeto. Este e o UNICO lugar onde a versao mora: badges, notas de
 # release e o formulario do AcoustID derivam daqui (regra de reconciliacao).
-project(PartePlay VERSION 0.3.0 LANGUAGES C CXX)
+project(PartePlay VERSION 0.3.1 LANGUAGES C CXX)
 
 # Versao da JUCE usada na build. Fato de DEPENDENCIA, e nao derivavel da versao
 # do projeto: a versao do PartePlay nao tem relacao com a 9.0.2 da JUCE. A CI le
@@ -327,6 +327,81 @@ target_compile_definitions(PartePlayTests PUBLIC JUCE_STANDALONE_APPLICATION=1)
 parteplay_warnings_as_errors(PartePlayTests)
 
 juce_generate_juce_header(PartePlayTests)
+
+# ---------------------------------------------------------------------------
+# Harness de carga do VST3 (epic/vst3-load-harness-ci, adr/0001).
+#
+# Alvo separado do PartePlayTests e, sobretudo, sem PARTEPLAY_SOURCES: o
+# harness carrega o bundle .vst3 como dado externo, e linkar o codigo do plugin
+# aqui faria o teste provar a copia compilada neste executavel em vez do
+# artefato que o usuario baixa.
+#
+# Depende so de juce_audio_processors_headless, que declara apenas
+# juce_audio_basics e juce_events: nenhum modulo de GUI entra no link, que e o
+# que permite rodar isto num agente de CI sem display.
+juce_add_console_app(PartePlayHarness PRODUCT_NAME "PartePlayHarness")
+
+target_sources(PartePlayHarness PRIVATE
+    Tests/LoadHarness.cpp
+)
+
+target_link_libraries(PartePlayHarness PRIVATE
+    juce::juce_audio_processors_headless
+    juce::juce_audio_basics
+    juce::juce_core
+    juce::juce_events
+)
+
+# O modulo headless injeta JUCE_PLUGINHOST_LADSPA=1 e JUCE_PLUGINHOST_LV2=1 por
+# via INTERFACE, e no Linux os dois precisam de cabecalhos que o runner nao tem:
+# com LADSPA ligado o build morre em `#include <ladspa.h>`, que derrubou Ubuntu e
+# macOS em 02/10.
+#
+# Nao da para vencer por `target_compile_definitions(...=0)`. Medido: o define da
+# interface vai DEPOIS na linha de comando e o compilador aplica o ultimo, entao
+# -DFLAVOR=0 -DFLAVOR=1 resolve em FLAVOR=1. Remover o item da propriedade e o
+# que funciona, e e o que JUCE le: o cabecalho do modulo tem
+# `#ifndef JUCE_PLUGINHOST_LADSPA / #define ... 0`, entao ausente significa
+# desabilitado.
+get_target_property(_harness_host_defs juce_audio_processors_headless INTERFACE_COMPILE_DEFINITIONS)
+if (NOT _harness_host_defs)
+    message(FATAL_ERROR
+        "juce_audio_processors_headless nao expoe INTERFACE_COMPILE_DEFINITIONS. "
+        "A JUCE mudou a forma de habilitar os plugin hosts; o harness deixaria de "
+        "ser VST3-only sem ninguem perceber.")
+endif()
+list(REMOVE_ITEM _harness_host_defs JUCE_PLUGINHOST_LADSPA=1 JUCE_PLUGINHOST_LV2=1)
+set_target_properties(juce_audio_processors_headless
+    PROPERTIES INTERFACE_COMPILE_DEFINITIONS "${_harness_host_defs}")
+
+foreach (_still_on JUCE_PLUGINHOST_LADSPA JUCE_PLUGINHOST_LV2)
+    list(FIND _harness_host_defs "${_still_on}=1" _found)
+    if (NOT _found EQUAL -1)
+        message(FATAL_ERROR
+            "${_still_on}=1 continua na interface do modulo apos a remocao. "
+            "O harness so pode linkar o VST3 SDK.")
+    endif()
+endforeach()
+
+# Header do modulo tem `#ifndef` nesses tres: quem nao define fica em 0. O VST3
+# e 1 explicito porque e o unico que o harness abre.
+target_compile_definitions(PartePlayHarness PRIVATE
+    JUCE_PLUGINHOST_VST3=1
+    JUCE_STANDALONE_APPLICATION=1
+)
+
+target_compile_features(PartePlayHarness PRIVATE cxx_std_17)
+
+parteplay_warnings_as_errors(PartePlayHarness)
+
+juce_generate_juce_header(PartePlayHarness)
+
+# O harness NAO e registrado em CTest, e uma decisao, nao uma omissao: o
+# bundle .vst3 so existe depois da etapa de empacotamento do CI, portanto nao
+# ha caminho para resolver no configure time. Ele roda como passo da workflow
+# logo apos o empacotamento, recebendo o bundle pelo argv - que e a T9.
+# Registrar aqui exigiria um caminho falso e o harness passaria a verde sem
+# nunca ter carregado nada.
 
 include(CTest)
 

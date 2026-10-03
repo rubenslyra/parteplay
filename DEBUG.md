@@ -115,7 +115,50 @@ $inst  = "C:\Program Files\Common Files\VST3\PartePlay.vst3\Contents\x86_64-win\
 Identical hashes, then the host is about to run your build. `install-vst3.ps1` performs this comparison
 itself and aborts on a mismatch.
 
-## 5. The version has exactly one source
+## 5. The manual MuseScore pass
+
+The load harness proves the plugin loads, instantiates and processes. It cannot hear, cannot see the
+transport, and is not MuseScore. Three things stay manual, and they are the ones that have actually
+failed before.
+
+**Before you start**
+
+1. Close MuseScore entirely. `Remove-Item` fails with "access denied" while it is open, and it fails
+   *partially* — it deletes `moduleinfo.json` before it fails on the DLL, leaving an inconsistent
+   bundle that is confusing to diagnose later.
+2. Install with `scripts\install-vst3.ps1` (elevated). It runs the test gate and aborts on a mismatch.
+3. Record the hash it prints. Note that **builds are not byte-reproducible** — rebuilding unchanged
+   source yields a different hash, so a hash from an earlier session will never match. That is
+   expected; the hash identifies *your* install, it does not prove reproducibility.
+
+**The pass**
+
+| # | Check | What "pass" looks like | Known failure |
+|---|-------|------------------------|---------------|
+| 1 | Plugin appears in MuseScore's plugin list | Present and enabled | Does not appear in the **instrument** container — declared gap **L2** |
+| 2 | Editor opens | The PartePlay window appears | — |
+| 3 | Transport: play, pause, seek | No hang, no freeze, position tracks | The plugin hanging on MuseScore's transport is the failure load validation cannot see |
+| 3a | Transport panel UI | Only `Estado`, `Posição` and `Silenciar saída` are present; the bar loop, training speed and manual A4 controls are absent | A removed control still showing means the bundle is stale — check `moduleinfo.json` reports `0.3.1` |
+| 3b | Mute toggle | Toggling it silences output and the state survives a host restart | — |
+| 4 | Export the `.mid`, import it into a score | Bars line up with the audio | `exportTempoMap` writes raw `getBpm()` (`PluginProcessor.cpp:332`), so half-time arrives as half tempo — declared gap **L1** |
+| 5 | Play the score and listen | Sync holds under the vocoder | No automated test covers audio fidelity at all |
+
+**Two open defects to expect, not to rediscover.** Both are known and both were reported
+independently: the tuning correction is routed through the vocoder (`PluginProcessor.cpp:118`), and
+`exportTempoMap` writes the raw `getBpm()` (`:332`). A failure that matches either is a
+confirmation, not a new finding — record it and move on.
+
+**If the plugin does not appear at all**, that is the load path, not the transport: run the harness
+against the installed bundle before suspecting MuseScore.
+
+```powershell
+.\build\msvc-2026\PartePlayHarness_artefacts\Release\PartePlayHarness.exe `
+  "C:\Program Files\Common Files\VST3\PartePlay.vst3"
+```
+
+Nine steps, exit `0`. It runs without a display.
+
+## 6. The version has exactly one source
 
 The overlay's `versao` field comes from `PARTEPLAY_VERSION`, a macro fed from
 `project(PartePlay VERSION …)` in `CMakeLists.txt`. It is not typed by hand anywhere, and the CI

@@ -35,6 +35,26 @@ ctest --preset msvc
 CI runs the same suite on Windows, Ubuntu and macOS (`cmake --preset linux / macos /
 macos-universal`). A PR whose gate is red does not pass.
 
+### Shell in the CI scripts
+
+The macOS runner uses Apple's bash 3.2; the others use bash 5. A builtin from bash 4+ works
+everywhere except macOS, and the symptom is always the same and never self-explanatory:
+`mapfile: command not found`, exit 127, with no hint about which YAML line caused it. Because
+Ubuntu passes, one job in four fails, and the obvious first guess is wrong — it was the
+harness path, when the path was right and the shell was not.
+
+So every step with a POSIX shell is checked:
+
+```
+python scripts/check-ci-shell.py            # the repository
+python scripts/check-ci-shell.py --self-test # the gate itself
+```
+
+It runs in under a second and needs no GitHub. The rule table in the script is deliberately
+short: one wrong entry produces a gate that fails correct code, and a gate that fails correct
+code is disabled within a week. The self-test exists for the same reason — a gate that was
+never seen failing is not known to work.
+
 ## Code conventions
 
 | Topic | Rule |
